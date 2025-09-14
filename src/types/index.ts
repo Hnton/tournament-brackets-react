@@ -29,6 +29,21 @@ export interface TableSettingsMap {
 export type TabType = 'bracket' | 'tables';
 export type BracketType = 'single' | 'double';
 
+// Types for the algorithmic double elimination bracket generation
+export type WBMatchId = string; // e.g. "WB1_3"
+export type LBSlot = { round: number, match: number, slot: 'A'|'B' };
+
+export interface LBMatch {
+    id: string;
+    A: string | null;  // Player or reference to previous winner
+    B: string | null;  // Player or reference to previous winner
+}
+
+export interface BracketMapping {
+    wbByRound: string[][];
+    lbMatches: Record<number, LBMatch[]>;
+}
+
 export interface DoubleBracketState {
     winnersMatches: Match[];
     losersMatches: Match[];
