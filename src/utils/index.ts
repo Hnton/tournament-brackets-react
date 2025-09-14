@@ -1,4 +1,4 @@
-import { Player } from './types';
+import { Player } from '../types';
 
 /**
  * Get the default name for a table based on its number
@@ -50,11 +50,11 @@ export const shuffleArray = <T>(array: T[]): T[] => {
 export const generateRandomScores = (): { score1: number; score2: number } => {
     const score1 = Math.floor(Math.random() * 3) + 1;
     let score2 = Math.floor(Math.random() * 3) + 1;
-    
+
     // Prevent ties
     if (score1 === score2) {
         score2 = score1 + 1;
     }
-    
+
     return { score1, score2 };
 };

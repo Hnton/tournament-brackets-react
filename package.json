@@ -1,15 +1,21 @@
 {
   "name": "tournament-brackets-react",
-  "productName": "tournament-brackets-react",
+  "productName": "Tournament Brackets",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Double elimination tournament bracket generator with comprehensive rematch avoidance for 4-512 players",
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "make:win": "electron-forge make --platform=win32",
     "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\""
+    "build": "npm run make:win",
+    "dist": "npm run make && npm run publish",
+    "lint": "echo \"No linting configured\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "postversion": "git push && git push --tags"
   },
   "keywords": [],
   "author": {
@@ -26,13 +32,16 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.9.0",
     "@electron-forge/plugin-fuses": "^7.9.0",
     "@electron-forge/plugin-webpack": "^7.9.0",
+    "@electron-forge/publisher-github": "^7.9.0",
     "@electron/fuses": "^1.8.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.3.3",
     "@vercel/webpack-asset-relocator-loader": "^1.7.3",
     "css-loader": "^6.11.0",
     "electron": "38.1.0",
     "node-loader": "^2.1.0",
     "style-loader": "^3.3.4",
+    "ts-jest": "^29.4.1",
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.2"
   },

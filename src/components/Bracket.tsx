@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { Player, Match } from '../types';
+import { Player, Match, BracketType } from '../types';
 import { Tooltip } from './Tooltip';
 
 interface BracketProps {
@@ -8,6 +8,7 @@ interface BracketProps {
     onMatchUpdate: (match: Match) => void;
     matches: Match[];
     onRemoveFromTable?: (match: Match) => void;
+    bracketType?: BracketType;
 }
 
 interface MatchCardProps {
@@ -319,10 +320,104 @@ const TableMatchModal: React.FC<TableMatchModalProps> = ({ match, onSubmitScore,
     );
 };
 
-export const Bracket: React.FC<BracketProps> = ({ players, onMatchUpdate, matches, onRemoveFromTable }) => {
+interface BracketGridProps {
+    matches: Match[];
+    title: string;
+    onMatchClick: (match: Match) => void;
+    isMatchDisabled: (match: Match) => boolean;
+}
+
+const BracketGrid: React.FC<BracketGridProps> = ({ matches, title, onMatchClick, isMatchDisabled }) => {
+    // Group matches by round
+    const matchesByRound = React.useMemo(() => {
+        const rounds: { [round: number]: Match[] } = {};
+        matches.forEach(match => {
+            if (!rounds[match.round]) rounds[match.round] = [];
+            rounds[match.round]!.push(match);
+        });
+        return rounds;
+    }, [matches]);
+
+    const rounds = Object.keys(matchesByRound)
+        .map(Number)
+        .sort((a, b) => a - b);
+
+    const getRoundName = (round: number, totalRounds: number, bracket: string) => {
+        if (bracket === 'GF') {
+            const match = matchesByRound[round]?.[0];
+            if (match?.isGrandFinals) return 'Grand Finals';
+            if (match?.isGrandFinalsReset) return 'Grand Finals Reset';
+            return `Finals Round ${round}`;
+        }
+
+        const roundsFromEnd = totalRounds - round + 1;
+        const prefix = bracket === 'WB' ? 'WB' : 'LB';
+
+        if (bracket === 'WB') {
+            if (roundsFromEnd === 1) return `${prefix} Final`;
+            if (roundsFromEnd === 2) return `${prefix} Semis`;
+            return `${prefix} R${round}`;
+        } else {
+            return `${prefix} R${round}`;
+        }
+    };
+
+    return (
+        <div className="bracket-grid" style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${rounds.length}, 280px)`,
+            gap: '20px',
+            justifyContent: 'start'
+        }}>
+            {rounds.map((round) => {
+                const roundMatches = matchesByRound[round] || [];
+
+                return (
+                    <div key={`${title}-${round}`} className="bracket-round" style={{ position: 'relative' }}>
+                        <div className="round-header">
+                            {getRoundName(round, rounds.length, title)}
+                        </div>
+
+                        {roundMatches.map((match) => (
+                            <MatchCard
+                                key={match.id}
+                                match={match}
+                                onClick={() => onMatchClick(match)}
+                                isDisabled={isMatchDisabled(match)}
+                            />
+                        ))}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+export const Bracket: React.FC<BracketProps> = ({ players, onMatchUpdate, matches, onRemoveFromTable, bracketType = 'single' }) => {
     const [scoreModal, setScoreModal] = useState<Match | null>(null);
     const [tableMatchModal, setTableMatchModal] = useState<Match | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // Group matches by bracket type and round for double elimination
+    const { winnersBracket, losersBracket, finalsBracket } = React.useMemo(() => {
+        if (bracketType === 'single') {
+            return {
+                winnersBracket: matches,
+                losersBracket: [],
+                finalsBracket: []
+            };
+        }
+
+        const winners = matches.filter(m => m.bracket === 'winners');
+        const losers = matches.filter(m => m.bracket === 'losers');
+        const finals = matches.filter(m => m.bracket === 'finals');
+
+        return {
+            winnersBracket: winners,
+            losersBracket: losers,
+            finalsBracket: finals
+        };
+    }, [matches, bracketType]);
 
     // Group matches by round
     const matchesByRound = React.useMemo(() => {
@@ -391,6 +486,86 @@ export const Bracket: React.FC<BracketProps> = ({ players, onMatchUpdate, matche
         return !match.player1 || !match.player2;
     };
 
+    if (bracketType === 'double') {
+        return (
+            <div className="container">
+                <h1 style={{
+                    fontSize: 'var(--font-size-3xl)',
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    marginBottom: 'var(--spacing-lg)',
+                    color: 'var(--text-primary)'
+                }}>
+                    Double Elimination Tournament
+                </h1>
+
+                <div className="double-bracket-container" ref={containerRef}>
+                    {/* Winners Bracket */}
+                    {winnersBracket.length > 0 && (
+                        <div className="winners-bracket-section" style={{ marginBottom: 'var(--spacing-xl)' }}>
+                            <h2 style={{
+                                fontSize: 'var(--font-size-xl)',
+                                color: 'var(--accent-primary)',
+                                marginBottom: 'var(--spacing-md)',
+                                textAlign: 'center'
+                            }}>
+                                Winners Bracket
+                            </h2>
+                            <BracketGrid matches={winnersBracket} title="WB" onMatchClick={openScoreModal} isMatchDisabled={isMatchDisabled} />
+                        </div>
+                    )}
+
+                    {/* Losers Bracket */}
+                    {losersBracket.length > 0 && (
+                        <div className="losers-bracket-section" style={{ marginBottom: 'var(--spacing-xl)' }}>
+                            <h2 style={{
+                                fontSize: 'var(--font-size-xl)',
+                                color: 'var(--accent-secondary)',
+                                marginBottom: 'var(--spacing-md)',
+                                textAlign: 'center'
+                            }}>
+                                Losers Bracket
+                            </h2>
+                            <BracketGrid matches={losersBracket} title="LB" onMatchClick={openScoreModal} isMatchDisabled={isMatchDisabled} />
+                        </div>
+                    )}
+
+                    {/* Finals */}
+                    {finalsBracket.length > 0 && (
+                        <div className="finals-bracket-section">
+                            <h2 style={{
+                                fontSize: 'var(--font-size-xl)',
+                                color: 'var(--text-primary)',
+                                marginBottom: 'var(--spacing-md)',
+                                textAlign: 'center'
+                            }}>
+                                Grand Finals
+                            </h2>
+                            <BracketGrid matches={finalsBracket} title="GF" onMatchClick={openScoreModal} isMatchDisabled={isMatchDisabled} />
+                        </div>
+                    )}
+                </div>
+
+                {scoreModal && (
+                    <ScoreModal
+                        match={scoreModal}
+                        onSubmit={submitScore}
+                        onClose={() => setScoreModal(null)}
+                    />
+                )}
+
+                {tableMatchModal && (
+                    <TableMatchModal
+                        match={tableMatchModal}
+                        onSubmitScore={handleSubmitScoreFromTable}
+                        onRemoveFromTable={handleRemoveFromTable}
+                        onClose={() => setTableMatchModal(null)}
+                    />
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="container">
             <h1 style={{
@@ -400,7 +575,7 @@ export const Bracket: React.FC<BracketProps> = ({ players, onMatchUpdate, matche
                 marginBottom: 'var(--spacing-lg)',
                 color: 'var(--text-primary)'
             }}>
-                Tournament Bracket
+                Single Elimination Tournament
             </h1>
 
             <div className="bracket-container" ref={containerRef}>

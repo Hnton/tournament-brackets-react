@@ -4,12 +4,28 @@ const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 module.exports = {
   packagerConfig: {
     asar: true,
+    // icon: './assets/icon', // Uncomment when you add icon.ico
+    executableName: 'TournamentBrackets',
+    appBundleId: 'com.mikael.tournament-brackets',
+    appCopyright: 'Copyright © 2025 Mikael Hinton',
+    win32metadata: {
+      CompanyName: 'Mikael Hinton',
+      ProductName: 'Tournament Brackets'
+    }
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        name: 'tournament-brackets',
+        authors: 'Mikael Hinton',
+        description: 'Double elimination tournament bracket generator',
+        // setupIcon: './assets/icon.ico', // Uncomment when you add icon
+        // iconUrl: 'https://raw.githubusercontent.com/Hnton/tournament-brackets-react/master/assets/icon.ico',
+        // loadingGif: './assets/loading.gif', // Optional loading animation
+        noMsi: true // Skip MSI generation for faster builds
+      },
     },
     {
       name: '@electron-forge/maker-zip',
@@ -60,4 +76,17 @@ module.exports = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
   ],
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'Hnton',
+          name: 'tournament-brackets-react'
+        },
+        prerelease: false,
+        draft: true
+      }
+    }
+  ]
 };

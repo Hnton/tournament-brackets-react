@@ -7,9 +7,9 @@ import { PlayerList } from './components/PlayerList';
 import { Bracket } from './components/Bracket';
 import { TableAssignment } from './components/TableAssignment';
 import { ScoreModal } from './components/ScoreModal';
-import { Player, Match, TableSettings, TournamentState } from './types';
+import { Player, Match, TableSettings, TournamentState, BracketType, DoubleBracketState } from './types';
 import { getDefaultTableName, shuffleArray, generateDemoPlayers, isBye } from './utils';
-import { generateSingleElim, generateDemoTournament, updateMatchWithScore } from './services/tournamentLogic';
+import { generateSingleElim, generateDemoTournament, updateMatchWithScore, generateDoubleElim, flattenDoubleBracket, updateDoubleElimMatch, generateDemoDoubleElim } from './services/tournamentLogic';
 import { autoAssignMatches, assignMatchToTable, removeMatchFromTable, updateTableSettings } from './services/tableManager';
 
 
@@ -26,6 +26,8 @@ const App = () => {
     const [tableSettings, setTableSettings] = useState<{ [key: number]: { name: string, doNotAutoAssign: boolean } }>({
         1: { name: 'Stream', doNotAutoAssign: false }
     });
+    const [bracketType, setBracketType] = useState<BracketType>('single');
+    const [doubleBracket, setDoubleBracket] = useState<DoubleBracketState | null>(null);
 
     const [tableScoreModal, setTableScoreModal] = useState<Match | null>(null);
 
@@ -84,14 +86,50 @@ const App = () => {
     // Create demo tournament with example results
     const createDemoTournament = () => {
         const demoPlayers = generateDemoPlayers();
-        setPlayers(demoPlayers);
-        const demoMatches = generateDemoTournament(demoPlayers);
-        setMatches(demoMatches);
+
+        if (bracketType === 'double') {
+            // Generate 64-player double elimination demo with populated results
+            const demoMatches = generateDemoDoubleElim(demoPlayers);
+            setMatches(demoMatches);
+
+            // Extract the bracket structure from flattened matches
+            const winners = demoMatches.filter(m => m.bracket === 'winners');
+            const losers = demoMatches.filter(m => m.bracket === 'losers');
+            const finals = demoMatches.filter(m => m.bracket === 'finals');
+
+            setDoubleBracket({
+                winnersMatches: winners,
+                losersMatches: losers,
+                finalsMatches: finals,
+                winnersChampion: null,
+                losersChampion: null
+            });
+        } else {
+            const demoMatches = generateDemoTournament(demoPlayers);
+            setMatches(demoMatches);
+            setDoubleBracket(null);
+        }
+
+        // Set 64 players for demo
+        const finalPlayers = bracketType === 'double' ?
+            Array.from({ length: 64 }, (_, i) => ({
+                name: `Player ${i + 1}`,
+                phone: `555-${String(i + 1).padStart(4, '0')}`
+            })) : demoPlayers;
+
+        setPlayers(finalPlayers);
         setTournamentStarted(true);
     };
 
     const startTournament = () => {
-        setMatches(generateSingleElim(players));
+        if (bracketType === 'double') {
+            const newDoubleBracket = generateDoubleElim(players);
+            setDoubleBracket(newDoubleBracket);
+            setMatches(flattenDoubleBracket(newDoubleBracket));
+        } else {
+            setMatches(generateSingleElim(players));
+            setDoubleBracket(null);
+        }
         setTournamentStarted(true);
     };
 
@@ -173,12 +211,35 @@ const App = () => {
         // Create updated match with scores and winner
         const updatedMatch = { ...match, score1, score2, winner };
 
-        // Use the imported updateMatchWithScore function
-        const updatedMatches = updateMatchWithScore(
-            matches,
-            updatedMatch,
-            (isComplete) => setTournamentComplete(isComplete)
-        );
+        if (bracketType === 'double' && doubleBracket) {
+            // Use double elimination update logic
+            console.log('🎯 Updating double elimination match:', {
+                matchId: updatedMatch.id,
+                winner: updatedMatch.winner?.name,
+                bracket: updatedMatch.bracket,
+                round: updatedMatch.round
+            });
+            const updatedBracket = updateDoubleElimMatch(
+                updatedMatch,
+                doubleBracket,
+                (isComplete) => setTournamentComplete(isComplete)
+            );
+            console.log('📊 Updated bracket state:', {
+                winnersMatches: updatedBracket.winnersMatches.length,
+                losersMatches: updatedBracket.losersMatches.length,
+                finalsMatches: updatedBracket.finalsMatches.length
+            });
+            setDoubleBracket(updatedBracket);
+            setMatches(flattenDoubleBracket(updatedBracket));
+        } else {
+            // Use single elimination update logic
+            const updatedMatches = updateMatchWithScore(
+                matches,
+                updatedMatch,
+                (isComplete) => setTournamentComplete(isComplete)
+            );
+            setMatches(updatedMatches);
+        }
 
         // Remove the match from table assignments when completed
         if (winner) {
@@ -188,7 +249,6 @@ const App = () => {
             }
         }
 
-        setMatches(updatedMatches);
         setTableScoreModal(null);
     };
 
@@ -565,6 +625,62 @@ const App = () => {
                         <h2 style={{ color: 'var(--text-primary)', margin: 'var(--spacing-lg) 0 var(--spacing-md) 0' }}>Players</h2>
                         <PlayerList players={players} onPlayersChange={setPlayers} />
 
+                        <div className="bracket-type-selection" style={{
+                            margin: 'var(--spacing-lg) 0',
+                            padding: 'var(--spacing-md)',
+                            background: 'var(--surface-elevated)',
+                            borderRadius: 'var(--radius-lg)',
+                            border: '1px solid var(--border-color)'
+                        }}>
+                            <h3 style={{ color: 'var(--text-primary)', margin: '0 0 var(--spacing-md) 0', fontSize: 'var(--font-size-md)' }}>
+                                Tournament Type
+                            </h3>
+                            <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 'var(--spacing-sm)',
+                                    color: 'var(--text-primary)',
+                                    cursor: 'pointer',
+                                    fontSize: 'var(--font-size-sm)'
+                                }}>
+                                    <input
+                                        type="radio"
+                                        name="bracketType"
+                                        value="single"
+                                        checked={bracketType === 'single'}
+                                        onChange={(e) => setBracketType(e.target.value as BracketType)}
+                                    />
+                                    <span>
+                                        <strong>Single Elimination</strong>
+                                        <br />
+                                        <span style={{ color: 'var(--text-muted)' }}>One loss eliminates</span>
+                                    </span>
+                                </label>
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 'var(--spacing-sm)',
+                                    color: 'var(--text-primary)',
+                                    cursor: 'pointer',
+                                    fontSize: 'var(--font-size-sm)'
+                                }}>
+                                    <input
+                                        type="radio"
+                                        name="bracketType"
+                                        value="double"
+                                        checked={bracketType === 'double'}
+                                        onChange={(e) => setBracketType(e.target.value as BracketType)}
+                                    />
+                                    <span>
+                                        <strong>Double Elimination</strong>
+                                        <br />
+                                        <span style={{ color: 'var(--text-muted)' }}>Two losses to eliminate</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
                         <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'center', alignItems: 'center' }}>
                             <button className="primary" onClick={startTournament} disabled={players.length < 2}>
                                 Start Tournament
@@ -595,7 +711,21 @@ const App = () => {
                     <div className="tournament-complete-banner">
                         <h2>🏆 Tournament Complete! 🏆</h2>
                         <p>
-                            Champion: {matches.find(m => m.winner && m.round === Math.max(...matches.map(match => match.round)))?.winner?.name || 'Unknown'}
+                            Champion: {(() => {
+                                if (bracketType === 'double') {
+                                    // For double elimination, check Grand Finals Reset first, then Grand Finals
+                                    const grandFinalsReset = matches.find(m => m.isGrandFinalsReset && m.winner);
+                                    if (grandFinalsReset) return grandFinalsReset.winner?.name || 'Unknown';
+
+                                    const grandFinals = matches.find(m => m.isGrandFinals && m.winner);
+                                    if (grandFinals) return grandFinals.winner?.name || 'Unknown';
+
+                                    return 'Unknown';
+                                } else {
+                                    // For single elimination, find winner of highest round
+                                    return matches.find(m => m.winner && m.round === Math.max(...matches.map(match => match.round)))?.winner?.name || 'Unknown';
+                                }
+                            })()}
                         </p>
                     </div>
                 )}
@@ -648,6 +778,7 @@ const App = () => {
                         players={players}
                         matches={matches}
                         onRemoveFromTable={returnMatchToWaiting}
+                        bracketType={bracketType}
                         onMatchUpdate={(updatedMatch) => {
                             // Remove match from table assignments if it now has a winner
                             if (updatedMatch.winner) {
@@ -661,100 +792,112 @@ const App = () => {
                                 }
                             }
 
-                            setMatches(prevMatches => {
-                                const originalMatch = prevMatches.find(m => m.id === updatedMatch.id);
-                                if (!originalMatch) return prevMatches;
+                            if (bracketType === 'double' && doubleBracket) {
+                                // Use double elimination update logic
+                                const updatedBracket = updateDoubleElimMatch(
+                                    updatedMatch,
+                                    doubleBracket,
+                                    (isComplete) => setTournamentComplete(isComplete)
+                                );
+                                setDoubleBracket(updatedBracket);
+                                setMatches(flattenDoubleBracket(updatedBracket));
+                            } else {
+                                // Use single elimination update logic
+                                setMatches(prevMatches => {
+                                    const originalMatch = prevMatches.find(m => m.id === updatedMatch.id);
+                                    if (!originalMatch) return prevMatches;
 
-                                let newMatches = [...prevMatches];
+                                    let newMatches = [...prevMatches];
 
-                                // Update the match itself (ensure table property is cleared if match is completed)
-                                const matchUpdate = updatedMatch.winner ? { ...updatedMatch, table: undefined } : updatedMatch;
-                                newMatches = newMatches.map(m => m.id === updatedMatch.id ? matchUpdate : m);
+                                    // Update the match itself (ensure table property is cleared if match is completed)
+                                    const matchUpdate = updatedMatch.winner ? { ...updatedMatch, table: undefined } : updatedMatch;
+                                    newMatches = newMatches.map(m => m.id === updatedMatch.id ? matchUpdate : m);
 
-                                // If this is an edit of a completed match, we need to handle cascade effects
-                                const maxRound = Math.max(...newMatches.map(m => m.round));
-                                if (originalMatch.winner && originalMatch.round < maxRound) {
-                                    // Only clear the specific path affected by the old winner, not all subsequent rounds
-                                    const clearAffectedPath = (matchId: number, currentRound: number) => {
-                                        if (currentRound >= maxRound) return;
+                                    // If this is an edit of a completed match, we need to handle cascade effects
+                                    const maxRound = Math.max(...newMatches.map(m => m.round));
+                                    if (originalMatch.winner && originalMatch.round < maxRound) {
+                                        // Only clear the specific path affected by the old winner, not all subsequent rounds
+                                        const clearAffectedPath = (matchId: number, currentRound: number) => {
+                                            if (currentRound >= maxRound) return;
 
-                                        const thisRoundMatches = newMatches.filter(m => m.round === currentRound);
-                                        const thisMatchIndex = thisRoundMatches.findIndex(m => m.id === matchId);
-                                        const nextRoundMatches = newMatches.filter(m => m.round === currentRound + 1);
-                                        const nextMatchIndex = Math.floor(thisMatchIndex / 2);
-                                        const nextMatch = nextRoundMatches[nextMatchIndex];
+                                            const thisRoundMatches = newMatches.filter(m => m.round === currentRound);
+                                            const thisMatchIndex = thisRoundMatches.findIndex(m => m.id === matchId);
+                                            const nextRoundMatches = newMatches.filter(m => m.round === currentRound + 1);
+                                            const nextMatchIndex = Math.floor(thisMatchIndex / 2);
+                                            const nextMatch = nextRoundMatches[nextMatchIndex];
 
-                                        if (nextMatch) {
-                                            // Determine if this match's winner was in slot 1 or 2 of the next match
-                                            const isFirstSlot = (thisMatchIndex % 2) === 0;
-                                            const wasInNextMatch = isFirstSlot ?
-                                                (nextMatch.player1 && nextMatch.player1.name === originalMatch.winner?.name) :
-                                                (nextMatch.player2 && nextMatch.player2.name === originalMatch.winner?.name);
+                                            if (nextMatch) {
+                                                // Determine if this match's winner was in slot 1 or 2 of the next match
+                                                const isFirstSlot = (thisMatchIndex % 2) === 0;
+                                                const wasInNextMatch = isFirstSlot ?
+                                                    (nextMatch.player1 && nextMatch.player1.name === originalMatch.winner?.name) :
+                                                    (nextMatch.player2 && nextMatch.player2.name === originalMatch.winner?.name);
 
-                                            if (wasInNextMatch) {
-                                                // Clear this player from the next match
-                                                const updatedNextMatch: Match = {
-                                                    ...nextMatch,
-                                                    player1: isFirstSlot ? null : nextMatch.player1,
-                                                    player2: !isFirstSlot ? null : nextMatch.player2,
-                                                    winner: null
-                                                };
-                                                // Remove scores if match no longer has a winner
-                                                delete updatedNextMatch.score1;
-                                                delete updatedNextMatch.score2;
+                                                if (wasInNextMatch) {
+                                                    // Clear this player from the next match
+                                                    const updatedNextMatch: Match = {
+                                                        ...nextMatch,
+                                                        player1: isFirstSlot ? null : nextMatch.player1,
+                                                        player2: !isFirstSlot ? null : nextMatch.player2,
+                                                        winner: null
+                                                    };
+                                                    // Remove scores if match no longer has a winner
+                                                    delete updatedNextMatch.score1;
+                                                    delete updatedNextMatch.score2;
 
-                                                newMatches = newMatches.map(m => m.id === nextMatch.id ? updatedNextMatch : m);
+                                                    newMatches = newMatches.map(m => m.id === nextMatch.id ? updatedNextMatch : m);
 
-                                                // Continue clearing the path if this match had a winner
-                                                if (nextMatch.winner) {
-                                                    clearAffectedPath(nextMatch.id, currentRound + 1);
+                                                    // Continue clearing the path if this match had a winner
+                                                    if (nextMatch.winner) {
+                                                        clearAffectedPath(nextMatch.id, currentRound + 1);
+                                                    }
                                                 }
                                             }
-                                        }
-                                    };
+                                        };
 
-                                    // Start clearing from the edited match
-                                    clearAffectedPath(originalMatch.id, originalMatch.round);
-                                }
-
-                                // Now advance the new winner through the bracket (if there is one)
-                                if (updatedMatch.winner && updatedMatch.round < maxRound) {
-                                    const advanceWinner = (matchId: number, winner: Player, currentRound: number) => {
-                                        if (currentRound >= maxRound) return;
-
-                                        const thisRoundMatches = newMatches.filter(m => m.round === currentRound);
-                                        const thisMatchIndex = thisRoundMatches.findIndex(m => m.id === matchId);
-                                        const nextRoundMatches = newMatches.filter(m => m.round === currentRound + 1);
-                                        const nextMatchIndex = Math.floor(thisMatchIndex / 2);
-                                        const nextMatch = nextRoundMatches[nextMatchIndex];
-
-                                        if (nextMatch) {
-                                            const isFirstSlot = (thisMatchIndex % 2) === 0;
-                                            const updatedNextMatch = {
-                                                ...nextMatch,
-                                                player1: isFirstSlot ? winner : nextMatch.player1,
-                                                player2: !isFirstSlot ? winner : nextMatch.player2,
-                                            };
-                                            newMatches = newMatches.map(m => m.id === nextMatch.id ? updatedNextMatch : m);
-                                        }
-                                    };
-
-                                    advanceWinner(updatedMatch.id, updatedMatch.winner, updatedMatch.round);
-                                }
-
-                                // Check if tournament is complete
-                                if (updatedMatch.winner && updatedMatch.round === maxRound) {
-                                    setTournamentComplete(true);
-                                } else {
-                                    // Check if tournament was complete but now isn't (due to editing)
-                                    const finalMatch = newMatches.find(m => m.round === maxRound);
-                                    if (!finalMatch?.winner) {
-                                        setTournamentComplete(false);
+                                        // Start clearing from the edited match
+                                        clearAffectedPath(originalMatch.id, originalMatch.round);
                                     }
-                                }
 
-                                return newMatches;
-                            });
+                                    // Now advance the new winner through the bracket (if there is one)
+                                    if (updatedMatch.winner && updatedMatch.round < maxRound) {
+                                        const advanceWinner = (matchId: number, winner: Player, currentRound: number) => {
+                                            if (currentRound >= maxRound) return;
+
+                                            const thisRoundMatches = newMatches.filter(m => m.round === currentRound);
+                                            const thisMatchIndex = thisRoundMatches.findIndex(m => m.id === matchId);
+                                            const nextRoundMatches = newMatches.filter(m => m.round === currentRound + 1);
+                                            const nextMatchIndex = Math.floor(thisMatchIndex / 2);
+                                            const nextMatch = nextRoundMatches[nextMatchIndex];
+
+                                            if (nextMatch) {
+                                                const isFirstSlot = (thisMatchIndex % 2) === 0;
+                                                const updatedNextMatch = {
+                                                    ...nextMatch,
+                                                    player1: isFirstSlot ? winner : nextMatch.player1,
+                                                    player2: !isFirstSlot ? winner : nextMatch.player2,
+                                                };
+                                                newMatches = newMatches.map(m => m.id === nextMatch.id ? updatedNextMatch : m);
+                                            }
+                                        };
+
+                                        advanceWinner(updatedMatch.id, updatedMatch.winner, updatedMatch.round);
+                                    }
+
+                                    // Check if tournament is complete
+                                    if (updatedMatch.winner && updatedMatch.round === maxRound) {
+                                        setTournamentComplete(true);
+                                    } else {
+                                        // Check if tournament was complete but now isn't (due to editing)
+                                        const finalMatch = newMatches.find(m => m.round === maxRound);
+                                        if (!finalMatch?.winner) {
+                                            setTournamentComplete(false);
+                                        }
+                                    }
+
+                                    return newMatches;
+                                });
+                            }
                         }}
                     />
                 )}

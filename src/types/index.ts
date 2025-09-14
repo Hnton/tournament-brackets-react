@@ -12,6 +12,9 @@ export interface Match {
     score1?: number;
     score2?: number;
     table?: number | undefined; // Table assignment (optional)
+    bracket?: 'winners' | 'losers' | 'finals'; // Which bracket this match belongs to
+    isGrandFinals?: boolean; // Special flag for grand finals
+    isGrandFinalsReset?: boolean; // Special flag for grand finals reset
 }
 
 export interface TableSettings {
@@ -24,6 +27,15 @@ export interface TableSettingsMap {
 }
 
 export type TabType = 'bracket' | 'tables';
+export type BracketType = 'single' | 'double';
+
+export interface DoubleBracketState {
+    winnersMatches: Match[];
+    losersMatches: Match[];
+    finalsMatches: Match[];
+    winnersChampion?: Player | null;
+    losersChampion?: Player | null;
+}
 
 export interface TournamentState {
     players: Player[];
@@ -35,4 +47,6 @@ export interface TournamentState {
     activeTab: TabType;
     globalAutoAssign: boolean;
     tableSettings: TableSettingsMap;
+    bracketType: BracketType;
+    doubleBracket?: DoubleBracketState;
 }

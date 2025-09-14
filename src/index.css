@@ -95,7 +95,7 @@ body {
   padding: 0;
   min-height: 100vh;
   width: 100vw;
-  overflow-x: hidden;
+  overflow-x: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -206,6 +206,28 @@ input[type="number"]:focus {
   width: 100%;
   max-width: none;
   min-height: 500px;
+  /* Ensure proper scrolling */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-medium) transparent;
+}
+
+/* Webkit scrollbar styling for bracket container */
+.bracket-container::-webkit-scrollbar {
+  height: 8px;
+}
+
+.bracket-container::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.bracket-container::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: var(--radius-sm);
+}
+
+.bracket-container::-webkit-scrollbar-thumb:hover {
+  background: var(--border-dark);
 }
 
 .bracket-grid {
@@ -213,6 +235,7 @@ input[type="number"]:focus {
   grid-auto-flow: column;
   /* gap will be overridden by inline styles */
   min-height: 400px;
+  min-width: max-content;
   align-items: center;
   position: relative;
   z-index: 2;
@@ -259,6 +282,48 @@ input[type="number"]:focus {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-light);
+}
+
+/* Double Elimination Bracket Layout */
+.double-bracket-container {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding: 20px;
+  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  max-width: none;
+  min-height: 600px;
+  /* Ensure proper scrolling for large tournaments */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-medium) transparent;
+  /* Add scroll indicators */
+  box-shadow:
+    var(--shadow-xl),
+    inset 10px 0 10px -10px rgba(0, 0, 0, 0.1),
+    inset -10px 0 10px -10px rgba(0, 0, 0, 0.1);
+}
+
+/* Webkit scrollbar styling for better UX */
+.double-bracket-container::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.double-bracket-container::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.double-bracket-container::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: var(--radius-sm);
+}
+
+.double-bracket-container::-webkit-scrollbar-thumb:hover {
+  background: var(--border-dark);
 }
 
 /* Clean Tournament Bracket Layout */
@@ -665,6 +730,9 @@ input:focus-visible {
   padding: var(--spacing-lg);
   min-width: 0;
   overflow-x: auto;
+  overflow-y: auto;
+  /* Ensure the content can expand to full width */
+  width: 100%;
 }
 
 .app-title {

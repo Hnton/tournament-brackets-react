@@ -1,16 +1,30 @@
-# Tournament Brackets React
+# Tournament Brackets
 
-A modern, feature-rich tournament management application built with **React**, **TypeScript**, and **Electron**. Manage single-elimination tournaments with advanced table assignment, live scoring, and professional bracket visualization.
+A modern, feature-rich tournament management application built with **React**, **TypeScript**, and **Electron**. Manage double-elimination tournaments with advanced rematch avoidance, table assignment, live scoring, and professional bracket visualization.
+
+## 📥 Download & Install
+
+### Windows Users
+**[📁 Download Latest Release](https://github.com/Hnton/tournament-brackets-react/releases/latest)**
+
+1. Download the `TournamentBrackets-Setup-vX.X.X.exe` file
+2. Run the installer (Windows may show a security warning - click "More info" then "Run anyway")
+3. Launch "Tournament Brackets" from your Start Menu
+
+### For Developers
+See the [Development Setup](#-development-setup) section below.
 
 ![Tournament Brackets Demo](example/Screenshot%202025-09-13%20213520.png)
 
 ## ✨ Features
 
 ### 🏆 Tournament Management
-- **Single-elimination brackets** with automatic seeding
-- **Smart BYE placement** to prevent BYE vs BYE matches
+- **Double-elimination brackets** with comprehensive rematch avoidance
+- **Support for 4-512 players** with mathematically correct bracket structures  
+- **Smart cross-stream placement** prevents early rematches until semifinals
 - **Real-time bracket progression** as matches are completed
 - **Tournament completion detection** with winner announcement
+- **Losers bracket integration** with proper WB→LB mapping for all bracket sizes
 
 ### 📊 Table Management
 - **Dual-tab interface**: Bracket view and Table management
@@ -38,10 +52,10 @@ A modern, feature-rich tournament management application built with **React**, *
 - **Keyboard navigation** support
 - **Accessibility features** (ARIA labels, focus management)
 
-## 🚀 Quick Start
+## 🚀 Development Setup
 
 ### Prerequisites
-- **Node.js** (v16 or higher)
+- **Node.js** (v18 or higher)
 - **npm** or **yarn**
 - **Git**
 
@@ -190,6 +204,50 @@ npm run lint       # Run linting (placeholder)
 - Implement **proper error handling**
 - Add **TypeScript interfaces** for all data
 - Use **CSS custom properties** for theming
+
+## 🏗️ Building & Deployment
+
+### Local Build
+
+```bash
+# Build Windows executable
+npm run build
+
+# Build for specific platform
+npm run make:win
+
+# Package without installer
+npm run package
+```
+
+The built files will be in the `out/` directory:
+- **Installer**: `out/make/squirrel.windows/x64/Tournament Brackets-X.X.X Setup.exe`
+- **Portable**: `out/Tournament Brackets-win32-x64/TournamentBrackets.exe`
+
+### Automated Releases
+
+This project uses **GitHub Actions** for automated builds and releases:
+
+1. **Push a version tag** to trigger a release:
+   ```bash
+   npm version patch  # or minor, major
+   git push origin v1.0.1
+   ```
+
+2. **GitHub Actions will automatically**:
+   - Build the Windows executable
+   - Run all tests
+   - Create a GitHub release
+   - Upload the .exe installer as a release asset
+
+3. **Users can then download** from the [Releases page](https://github.com/Hnton/tournament-brackets-react/releases)
+
+### Manual Release
+
+```bash
+# Build and publish to GitHub (requires GITHUB_TOKEN)
+npm run dist
+```
 
 ## 🤝 Contributing
 
