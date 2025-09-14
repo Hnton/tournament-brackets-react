@@ -31,7 +31,7 @@ export type BracketType = 'single' | 'double';
 
 // Types for the algorithmic double elimination bracket generation
 export type WBMatchId = string; // e.g. "WB1_3"
-export type LBSlot = { round: number, match: number, slot: 'A'|'B' };
+export type LBSlot = { round: number, match: number, slot: 'A' | 'B' };
 
 export interface LBMatch {
     id: string;

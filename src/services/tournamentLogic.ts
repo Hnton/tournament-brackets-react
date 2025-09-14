@@ -1735,7 +1735,7 @@ function buildMapping(N: number): BracketMapping {
     // Assign WB losers to LB round t = max(1, 2*r - 2)
     const incoming: Record<number, string[]> = {};
     for (let t = 1; t <= lbRounds; t++) incoming[t] = [];
-    
+
     for (let r = 1; r <= k; r++) {
         let t = 2 * r - 2;
         if (t < 1) t = 1;
@@ -1756,7 +1756,7 @@ function buildMapping(N: number): BracketMapping {
         const incomingList = incoming[t] || [];
         const inList = [...incomingList]; // WB losers in WB-match order
         const pairs: [string, string][] = [];
-        
+
         // zip prevWinners with inList
         const min = Math.min(prevWinners.length, inList.length);
         for (let i = 0; i < min; i++) {
@@ -1766,7 +1766,7 @@ function buildMapping(N: number): BracketMapping {
                 pairs.push([prevWinner, incoming]);
             }
         }
-        
+
         // leftover prevWinners -> pair among themselves
         let leftoverPrev = prevWinners.slice(min);
         while (leftoverPrev.length >= 2) {
@@ -1776,7 +1776,7 @@ function buildMapping(N: number): BracketMapping {
                 pairs.push([first, second]);
             }
         }
-        
+
         // leftover inList -> pair among themselves
         let leftoverIn = inList.slice(min);
         while (leftoverIn.length >= 2) {
@@ -1786,26 +1786,26 @@ function buildMapping(N: number): BracketMapping {
                 pairs.push([first, second]);
             }
         }
-        
+
         // create matches in order
         for (let i = 0; i < pairs.length; i++) {
-            const matchId = `LB${t}_${i+1}`;
+            const matchId = `LB${t}_${i + 1}`;
             const pair = pairs[i];
             if (pair && lbMatches[t]) {
                 lbMatches[t]!.push({ id: matchId, A: pair[0], B: pair[1] });
             }
         }
-        
+
         // prepare prevWinners for next round
         const currentRoundMatches = lbMatches[t] || [];
         const newPrev: string[] = currentRoundMatches.map(m => `winner of ${m.id}`);
-        
+
         // carry any leftover single from leftoverPrev or leftoverIn (should be at most one)
         const lastPrev = leftoverPrev[0];
         const lastIn = leftoverIn[0];
         if (lastPrev) newPrev.push(lastPrev);
         if (lastIn) newPrev.push(lastIn);
-        
+
         prevWinners = newPrev;
     }
 
@@ -1818,32 +1818,32 @@ function buildMapping(N: number): BracketMapping {
 function createMatchesFromMapping(players: Player[], bracketMapping: BracketMapping): DoubleBracketState {
     const winnersMatches: Match[] = [];
     const losersMatches: Match[] = [];
-    
+
     let wbMatchId = 1;
     let lbMatchId = 10000;
-    
+
     // Create Winners Bracket matches
     const N = Math.pow(2, Math.ceil(Math.log2(players.length)));
     const shuffled = shuffleArray(players);
-    
+
     // Pad with BYEs if needed
     const bracketPlayers: (Player | null)[] = [...shuffled];
     const byePlayer: Player = { name: 'BYE', phone: '' };
     while (bracketPlayers.length < N) {
         bracketPlayers.push(byePlayer);
     }
-    
+
     // Generate WB rounds
     let currentRoundPlayers = [...bracketPlayers];
     let round = 1;
-    
+
     while (currentRoundPlayers.length > 1) {
         const nextRoundPlayers: (Player | null)[] = [];
-        
+
         for (let i = 0; i < currentRoundPlayers.length; i += 2) {
             const player1 = currentRoundPlayers[i] || null;
             const player2 = currentRoundPlayers[i + 1] || null;
-            
+
             let winner: Player | null = null;
             // Handle BYE matches
             if (round === 1) {
@@ -1855,7 +1855,7 @@ function createMatchesFromMapping(players: Player[], bracketMapping: BracketMapp
                     winner = player1;
                 }
             }
-            
+
             const match: Match = {
                 id: wbMatchId++,
                 round,
@@ -1864,20 +1864,20 @@ function createMatchesFromMapping(players: Player[], bracketMapping: BracketMapp
                 winner,
                 bracket: 'winners'
             };
-            
+
             winnersMatches.push(match);
             nextRoundPlayers.push(null); // Placeholder for winner
-            
+
             // Auto-advance BYE winners
             if (winner) {
                 nextRoundPlayers[nextRoundPlayers.length - 1] = winner;
             }
         }
-        
+
         currentRoundPlayers = nextRoundPlayers;
         round++;
     }
-    
+
     // Create Losers Bracket matches from mapping
     for (let t = 1; t <= Object.keys(bracketMapping.lbMatches).length; t++) {
         const roundMatches = bracketMapping.lbMatches[t] || [];
@@ -1892,7 +1892,7 @@ function createMatchesFromMapping(players: Player[], bracketMapping: BracketMapp
             losersMatches.push(match);
         }
     }
-    
+
     // Create finals matches
     const finalsMatches: Match[] = [
         {
@@ -1912,7 +1912,7 @@ function createMatchesFromMapping(players: Player[], bracketMapping: BracketMapp
             isGrandFinalsReset: true
         }
     ];
-    
+
     return {
         winnersMatches,
         losersMatches,
@@ -1929,13 +1929,13 @@ function createMatchesFromMapping(players: Player[], bracketMapping: BracketMapp
 export const generateDoubleElimAlgorithmic = (players: Player[]): DoubleBracketState => {
     const N = Math.pow(2, Math.ceil(Math.log2(players.length)));
     const bracketMapping = buildMapping(N);
-    
+
     console.log(`Generated algorithmic bracket mapping for ${N} players:`, {
         wbRounds: Object.keys(bracketMapping.wbByRound).length - 1, // Subtract 1 because index 0 is empty
         lbRounds: Object.keys(bracketMapping.lbMatches).length,
         totalLBMatches: Object.values(bracketMapping.lbMatches).flat().length
     });
-    
+
     return createMatchesFromMapping(players, bracketMapping);
 };
 
@@ -1945,104 +1945,104 @@ export const generateDoubleElimAlgorithmic = (players: Player[]): DoubleBracketS
  */
 export const test64PlayerRematchPrevention = (): { success: boolean; details: string } => {
     console.log('🏆 Testing 64-Player Bracket Rematch Prevention');
-    
+
     // Create 64 test players
     const players: Player[] = Array.from({ length: 64 }, (_, i) => ({
         name: `Player ${i + 1}`,
         phone: `555-${String(i + 1).padStart(4, '0')}`
     }));
-    
+
     // Generate the bracket
     const bracket = generateDoubleElimAlgorithmic(players);
     const mapping = buildMapping(64);
-    
+
     // Verify structure
     const wbRounds = Math.max(...bracket.winnersMatches.map(m => m.round));
     const lbRounds = Math.max(...bracket.losersMatches.map(m => m.round));
-    
+
     const expectedWBRounds = 6; // log2(64) = 6
     const expectedLBRounds = 10; // 2*(6-1) = 10
-    
+
     let success = true;
     let details = '';
-    
+
     if (wbRounds !== expectedWBRounds) {
         success = false;
         details += `❌ Wrong WB rounds: expected ${expectedWBRounds}, got ${wbRounds}\n`;
     } else {
         details += `✅ WB rounds correct: ${wbRounds}\n`;
     }
-    
+
     if (lbRounds !== expectedLBRounds) {
         success = false;
         details += `❌ Wrong LB rounds: expected ${expectedLBRounds}, got ${lbRounds}\n`;
     } else {
         details += `✅ LB rounds correct: ${lbRounds}\n`;
     }
-    
+
     // Check LB Round 1 pairing for rematch prevention
     const lbRound1 = bracket.losersMatches.filter(m => m.round === 1);
     const expectedLBR1Matches = 16; // 32 WB R1 losers / 2
-    
+
     if (lbRound1.length !== expectedLBR1Matches) {
         success = false;
         details += `❌ Wrong LB R1 matches: expected ${expectedLBR1Matches}, got ${lbRound1.length}\n`;
     } else {
         details += `✅ LB R1 matches correct: ${lbRound1.length}\n`;
     }
-    
+
     // Verify the mapping prevents immediate rematches
     const lb1Mapping = mapping.lbMatches[1] || [];
     let hasImmediateRematches = false;
-    
+
     lb1Mapping.forEach(match => {
         if (match.A === match.B) {
             hasImmediateRematches = true;
             details += `❌ Immediate rematch found: ${match.id} pairs ${match.A} with itself\n`;
         }
     });
-    
+
     if (!hasImmediateRematches) {
         details += `✅ No immediate rematches in LB R1 - algorithm working correctly\n`;
     } else {
         success = false;
     }
-    
+
     // Check match distribution follows the expected pattern
     const lbMatchCounts: number[] = [];
     for (let t = 1; t <= 10; t++) {
         const roundMatches = bracket.losersMatches.filter(m => m.round === t);
         lbMatchCounts.push(roundMatches.length);
     }
-    
+
     const expectedLBCounts = [16, 16, 8, 8, 4, 4, 2, 2, 1, 1];
     let distributionCorrect = true;
-    
+
     for (let i = 0; i < expectedLBCounts.length; i++) {
         if (lbMatchCounts[i] !== expectedLBCounts[i]) {
             distributionCorrect = false;
             details += `❌ LB R${i + 1}: expected ${expectedLBCounts[i]} matches, got ${lbMatchCounts[i] || 0}\n`;
         }
     }
-    
+
     if (distributionCorrect) {
         details += `✅ LB match distribution correct: ${lbMatchCounts.join(', ')}\n`;
     } else {
         success = false;
     }
-    
+
     details += `\n📊 Tournament Statistics:\n`;
     details += `- Total WB matches: ${bracket.winnersMatches.length}\n`;
     details += `- Total LB matches: ${bracket.losersMatches.length}\n`;
     details += `- Total Finals matches: ${bracket.finalsMatches.length}\n`;
     details += `- Grand total: ${bracket.winnersMatches.length + bracket.losersMatches.length + bracket.finalsMatches.length}\n`;
-    
+
     if (success) {
         details += `\n🎉 SUCCESS: 64-player bracket prevents early rematches!\n`;
         details += `🎯 Players cannot face the same opponent twice before semifinals/finals.\n`;
     } else {
         details += `\n❌ ISSUES FOUND: Algorithm needs adjustment.\n`;
     }
-    
+
     return { success, details };
 };
