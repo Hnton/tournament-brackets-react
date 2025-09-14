@@ -1,7 +1,7 @@
 {
   "name": "tournament-brackets-react",
   "productName": "Tournament Brackets",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Double elimination tournament bracket generator with comprehensive rematch avoidance for 4-512 players",
   "main": ".webpack/main",
   "scripts": {
