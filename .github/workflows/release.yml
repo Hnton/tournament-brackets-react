@@ -80,12 +80,16 @@ jobs:
           ### Changes
           See the commit history for detailed changes in this release.
 
+    - name: Get package version
+      id: package-version
+      run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./artifacts/tournament-brackets-1.0.0 Setup.exe
+        asset_path: ./artifacts/Tournament Brackets-${{ steps.package-version.outputs.version }} Setup.exe
         asset_name: TournamentBrackets-Setup-${{ github.ref_name }}.exe
         asset_content_type: application/octet-stream
