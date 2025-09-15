@@ -41,10 +41,16 @@ const BracketsPopout: React.FC = () => {
     }
 
     return (
-        <div style={{ width: '100vw', height: '100vh', padding: 12 }}>
-            <div className="bracket-tab" style={{ width: '100%', height: '100%' }}>
+        // Full viewport container with scrolling enabled so large brackets are navigable
+        <div style={{ width: '100vw', height: '100vh', padding: 12, boxSizing: 'border-box' }}>
+            <div
+                className="bracket-tab"
+                style={{ width: '100%', height: '100%', overflow: 'auto', WebkitOverflowScrolling: 'touch' }}
+            >
                 {/* Use clear=true so the library clears any previous render and avoids duplicates */}
-                <BracketsViewer data={data} clear={true} />
+                <div style={{ minWidth: '100%', minHeight: '100%' }}>
+                    <BracketsViewer data={data} clear={true} />
+                </div>
             </div>
         </div>
     );

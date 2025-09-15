@@ -1361,6 +1361,14 @@ input:focus-visible {
   z-index: 30;
 }
 
+/* Popout-specific helpers */
+.popout-viewport {
+  width: 100vw;
+  height: 100vh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .popout-control .primary {
   padding: 8px 12px;
 }

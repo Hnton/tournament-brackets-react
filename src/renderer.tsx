@@ -30,7 +30,9 @@ import {
 
 const App = () => {
     const urlParams = new URLSearchParams(window.location.search);
-    const isPopout = urlParams.get('popout') === 'bracket';
+    const popoutParam = urlParams.get('popout');
+    const isBracketsPopout = popoutParam === 'bracket';
+    const isTablesPopout = popoutParam === 'tables';
     // Tournament service instance
     const [tournamentService] = useState(() => new TournamentService());
 
@@ -95,6 +97,20 @@ const App = () => {
             console.error('Failed to persist bracketsData to localStorage', e);
         }
     }, [bracketsData]);
+
+    // Persist table assignments and related view data so a tables popout can read it
+    useEffect(() => {
+        try {
+            const tablesPayload = {
+                tableAssignments,
+                participants: bracketsData?.participant || [],
+                matches: bracketsData?.match || []
+            };
+            localStorage.setItem('tournament:tablesData', JSON.stringify(tablesPayload));
+        } catch (e) {
+            console.error('Failed to persist tablesData to localStorage', e);
+        }
+    }, [tableAssignments, bracketsData?.participant, bracketsData?.match]);
 
     // Handle CSV upload
     const handleCSVUpload = (uploadedPlayers: Player[]) => {
@@ -400,9 +416,14 @@ const App = () => {
         return null;
     };
 
-    if (isPopout) {
+    if (isBracketsPopout) {
         // If opened as a popout, render the standalone bracket popout view
         return <BracketsPopout />;
+    }
+
+    if (isTablesPopout) {
+        const TablesPopout = require('./components/TablesPopout').default;
+        return <TablesPopout />;
     }
 
     return (
@@ -489,6 +510,28 @@ const App = () => {
                                 }}
                             >
                                 Popout Bracket
+                            </button>
+
+                            <button
+                                style={{ marginLeft: 8 }}
+                                className="secondary"
+                                onClick={() => {
+                                    try {
+                                        // Ensure tablesData is seeded for the tables popout to read
+                                        const tablesPayload = {
+                                            tableAssignments,
+                                            participants: bracketsData.participant || [],
+                                            matches: bracketsData.match || []
+                                        };
+                                        localStorage.setItem('tournament:tablesData', JSON.stringify(tablesPayload));
+                                    } catch (e) {
+                                        console.error('Failed to store tables data for popout', e);
+                                    }
+                                    const url = `${window.location.origin}${window.location.pathname}?popout=tables`;
+                                    window.open(url, '_blank', 'width=700,height=800');
+                                }}
+                            >
+                                Popout Tables
                             </button>
                         </div>
                     )}

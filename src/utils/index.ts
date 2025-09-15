@@ -44,3 +44,26 @@ export const shuffleArray = <T>(array: T[]): T[] => {
     return shuffled;
 };
 
+/**
+ * Convert internal round/group identifiers into a user-friendly label
+ * Supports Winners Bracket (WB), Losers Bracket (LB) and Finals mapping.
+ * allMatches should include the full tournament matches when available for correct LB numbering.
+ */
+export const getUserFriendlyRoundNumber = (match: any, allMatches?: any[]): string => {
+    if (!match) return '';
+
+    if (match.group_id === 1) {
+        return `WB Round ${match.round_id}`;
+    }
+
+    if (match.group_id === 2) {
+        const tournamentMatches = allMatches || [];
+        const allLBMatches = tournamentMatches.filter(m => m.group_id === 2);
+        const uniqueRoundIds = [...new Set(allLBMatches.map(m => m.round_id))].sort((a, b) => a - b);
+        const lbRoundNumber = uniqueRoundIds.indexOf(match.round_id) + 1;
+        return lbRoundNumber > 0 ? `LB Round ${lbRoundNumber}` : `LB Round ${match.round_id}`;
+    }
+
+    return 'Finals';
+};
+

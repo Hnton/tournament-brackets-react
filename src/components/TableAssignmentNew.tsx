@@ -1,6 +1,11 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { Match, Participant } from '../types';
+import { getUserFriendlyRoundNumber } from '../utils';
+
+// TUNABLE: Increase >1 to make Losers Bracket matches more aggressive (higher priority)
+// Decrease <1 to make losers less aggressive. Default 1.05 gives a modest boost to LB.
+const LB_AGGRESSIVENESS = 1.25;
 
 interface ScoreModalProps {
     match: Match;
@@ -178,61 +183,46 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
 }) => {
     const [scoreModal, setScoreModal] = React.useState<Match | null>(null);
 
-    // Helper function to get user-friendly round number for display
-    const getUserFriendlyRoundNumber = (match: Match): string => {
-        if (match.group_id === 1) {
-            // Winners Bracket: round_id directly corresponds to WB round number
-            return `WB Round ${match.round_id}`;
-        } else if (match.group_id === 2) {
-            // Losers Bracket: Calculate LB round number based on match distribution
-            // Use allMatches if available, otherwise fall back to matches + waitingMatches
-            const tournamentMatches = allMatches || [...matches, ...waitingMatches];
-            const allLBMatches = tournamentMatches.filter(m => m.group_id === 2);
-            const uniqueRoundIds = [...new Set(allLBMatches.map(m => m.round_id))].sort((a, b) => a - b);
-            const lbRoundNumber = uniqueRoundIds.indexOf(match.round_id) + 1;
-            return lbRoundNumber > 0 ? `LB Round ${lbRoundNumber}` : `Round ${match.round_id}`;
-        } else {
-            // Grand Finals or other special matches
-            return `Finals`;
-        }
+    // Use shared utility for friendly round labels
+    const friendlyRound = (m: Match) => getUserFriendlyRoundNumber(m, allMatches);
+
+    // Parse friendly round into structured info for scoring
+    const parseFriendlyRound = (m: Match) => {
+        const label = friendlyRound(m) || '';
+        const wbMatch = label.match(/^WB Round\s*(\d+)/i);
+        if (wbMatch) return { bracket: 'WB', roundNum: parseInt(String(wbMatch[1]), 10) };
+        const lbMatch = label.match(/^LB Round\s*(\d+)/i);
+        if (lbMatch) return { bracket: 'LB', roundNum: parseInt(String(lbMatch[1]), 10) };
+        if (/finals/i.test(label)) return { bracket: 'F', roundNum: null };
+        // If friendly label cannot be determined, return unknown and no roundNum to avoid using internal ids
+        return { bracket: 'UNK', roundNum: null };
     };
 
     // Calculate priority score for a match based on double elimination tournament flow
     const getMatchPriority = (match: Match): number => {
-        const { group_id, round_id } = match;
+        const { group_id } = match;
+        const parsed = parseFriendlyRound(match);
+        const r = parsed.roundNum ?? 0;
 
         if (group_id === 1) {
-            // Winners Bracket Priority
-            // WB1 gets highest priority, then WB2, etc.
-            // Base: 10000, subtract round to prioritize earlier rounds
-            return 10000 - (round_id * 100);
+            // Winners Bracket Priority — use friendly WB numbering
+            return 10000 - (r * 100);
         } else if (group_id === 2) {
-            // Losers Bracket Priority
-            // LB matches can run in parallel with WB matches of same "stage"
-            // LB1 runs after WB1, LB2 can run with WB2, etc.
-
-            if (round_id === 1) {
-                // LB1: Must wait for WB1 to complete, but high priority after that
-                return 9900; // Just below WB1
-            } else if (round_id % 2 === 0) {
-                // Even LB rounds (LB2, LB4, LB6...): Can run parallel with corresponding WB round
-                // LB2 with WB2, LB4 with WB3, etc.
-                const correspondingWBRound = (round_id / 2) + 1;
-                return 10000 - (correspondingWBRound * 100) - 10; // Slightly below corresponding WB round
+            // Losers Bracket Priority — use friendly LB numbering
+            if (r === 1) {
+                return Math.round(9900 * LB_AGGRESSIVENESS); // Just below WB1
+            } else if (r % 2 === 0) {
+                const correspondingWBRound = (r / 2) + 1;
+                return Math.round((10000 - (correspondingWBRound * 100) - 10) * LB_AGGRESSIVENESS);
             } else {
-                // Odd LB rounds (LB3, LB5, LB7...): Must wait for WB round to complete
-                const correspondingWBRound = Math.ceil(round_id / 2);
-                return 10000 - (correspondingWBRound * 100) - 50; // Below WB round but above next level
+                const correspondingWBRound = Math.ceil(r / 2);
+                return Math.round((10000 - (correspondingWBRound * 100) - 50) * LB_AGGRESSIVENESS);
             }
         } else {
-            // Grand Finals and special matches
             if (group_id === 3) {
-                // Grand Final: Highest priority when ready
-                return 15000 - round_id;
-            } else {
-                // Reset matches or other finals
-                return 14000 - round_id;
+                return 15000 - (r || 0);
             }
+            return 14000 - (r || 0);
         }
     };
 
@@ -274,7 +264,6 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
     // Advanced priority function following double elimination tournament flow
     const getOptimalMatch = (availableMatches: Match[]): Match | null => {
         if (availableMatches.length === 0) return null;
-
         const assignedMatches = getAssignedMatchesByBracket();
 
         // Build a set of participant IDs currently playing to avoid double-assigning a player
@@ -294,85 +283,83 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
             return true;
         });
 
-        // If nothing remains after filtering, fallback to original availableMatches (safe fallback)
         const usableMatches = filteredAvailable.length > 0 ? filteredAvailable : availableMatches;
 
-        // Group usable matches by bracket and round
+        // Group usable matches
+        const gfMatches = usableMatches.filter(m => m.group_id >= 3);
         const wbMatches = usableMatches.filter(m => m.group_id === 1);
         const lbMatches = usableMatches.filter(m => m.group_id === 2);
-        const gfMatches = usableMatches.filter(m => m.group_id >= 3);
 
-        // Priority 1: Grand Finals (when available, always highest priority)
+        // (debug instrumentation removed)
+
+        // If grand finals available, choose the highest priority GF
         if (gfMatches.length > 0) {
+            // Use existing priority function for finals
             const sortedGF = gfMatches.sort((a, b) => getMatchPriority(b) - getMatchPriority(a));
             return sortedGF[0] || null;
         }
 
-        // Priority 2: Winners Bracket (foundation of the tournament)
-        if (wbMatches.length > 0) {
-            const sortedWB = wbMatches.sort((a, b) => {
-                // First by round (earlier rounds first)
-                if (a.round_id !== b.round_id) {
-                    return a.round_id - b.round_id;
-                }
-                // Then by match number within round
-                return a.number - b.number;
-            });
-
-            // Check if we should prioritize WB over LB based on parallel execution rules
-            const earliestWBRound = sortedWB[0]?.round_id;
-            if (!earliestWBRound) return sortedWB[0] || null;
-
-            // If there are LB matches that can run parallel with current WB round
-            const parallelLBMatches = lbMatches.filter(lb => {
-                if (lb.round_id === 1) return false; // LB1 must wait for WB1 to complete
-
-                // Even LB rounds can run with WB rounds
-                if (lb.round_id % 2 === 0) {
-                    const correspondingWBRound = (lb.round_id / 2) + 1;
-                    return correspondingWBRound === earliestWBRound;
-                }
-                return false;
-            });
-
-            // If we have parallel LB matches and tables available, consider both
-            if (parallelLBMatches.length > 0) {
-                // Prefer WB but allow LB to run in parallel
-                // Check if current WB round is already being played
-                const currentWBRoundInPlay = assignedMatches.wb.some(m => m.round_id === earliestWBRound);
-
-                if (currentWBRoundInPlay && parallelLBMatches.length > 0) {
-                    // WB round is already running, prioritize parallel LB matches
-                    const sortedParallelLB = parallelLBMatches.sort((a, b) => a.number - b.number);
-                    return sortedParallelLB[0] || null;
-                }
+        // Heuristic scoring: higher score = higher priority
+        const scoreMatch = (m: Match) => {
+            const parsed = parseFriendlyRound(m);
+            const rr = parsed.roundNum ?? 0;
+            // base values
+            if (m.group_id === 1) {
+                // Winners: earlier friendly rounds higher priority
+                return 80000 - (rr) * 1000 - (m.number || 0);
             }
 
-            return sortedWB[0] || null;
-        }
+            if (m.group_id === 2) {
+                // Losers using friendly LB numbering
+                if (rr === 1) return Math.round((20000 - (m.number || 0)) * LB_AGGRESSIVENESS);
 
-        // Priority 3: Losers Bracket (when no WB matches available)
-        if (lbMatches.length > 0) {
-            const sortedLB = lbMatches.sort((a, b) => {
-                // First by round (earlier rounds first)
-                if (a.round_id !== b.round_id) {
-                    return a.round_id - b.round_id;
+                if (rr % 2 === 0) {
+                    const correspondingWBRound = (rr / 2) + 1;
+                    const wbInPlayOrWaiting = assignedMatches.wb.some(x => {
+                        const p = parseFriendlyRound(x);
+                        return p.bracket === 'WB' && p.roundNum === correspondingWBRound;
+                    }) || wbMatches.some(x => {
+                        const p = parseFriendlyRound(x);
+                        return p.bracket === 'WB' && p.roundNum === correspondingWBRound;
+                    });
+                    if (wbInPlayOrWaiting) {
+                        return Math.round((79000 - correspondingWBRound * 1000 - (m.number || 0)) * LB_AGGRESSIVENESS);
+                    }
+                    return Math.round((40000 - (rr) * 100) * LB_AGGRESSIVENESS);
                 }
-                // Then by match number within round
-                return a.number - b.number;
-            });
 
-            return sortedLB[0] || null;
-        }
+                const correspondingWBRound = Math.ceil(rr / 2);
+                const wbInPlay = assignedMatches.wb.some(x => {
+                    const p = parseFriendlyRound(x);
+                    return p.bracket === 'WB' && p.roundNum === correspondingWBRound;
+                });
+                return Math.round(((wbInPlay ? 70000 : 30000) - (rr) * 100 - (m.number || 0)) * LB_AGGRESSIVENESS);
+            }
 
-        return null;
+            return 0;
+        };
+
+        // Build scored list and pick highest score
+        const scored = usableMatches.map(m => ({ m, score: scoreMatch(m) }));
+        // sort using score first, then friendly round number, then match number
+        scored.sort((a, b) => {
+            const diff = (b.score || 0) - (a.score || 0);
+            if (diff !== 0) return diff;
+            const aRound = parseFriendlyRound(a.m).roundNum || 0;
+            const bRound = parseFriendlyRound(b.m).roundNum || 0;
+            const roundDiff = aRound - bRound;
+            if (roundDiff !== 0) return roundDiff;
+            return (a.m.number || 0) - (b.m.number || 0);
+        });
+
+        return scored[0] ? scored[0].m : null;
     };
 
     // Manual assign function with proper double elimination priority
     const handleAssignNext = (tableId: number) => {
         const nextMatch = getOptimalMatch(waitingMatches);
         if (nextMatch) {
-            console.log(`Assigning match #${nextMatch.number} (Group ${nextMatch.group_id}, Round ${nextMatch.round_id}) to table ${tableId}`);
+            console.log(`Assigning match #${nextMatch.number} (${friendlyRound(nextMatch)}) to table ${tableId}`);
             onMoveMatch(nextMatch, tableId);
         } else {
             console.log(`No optimal match found for table ${tableId}`);
@@ -397,6 +384,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
 
     return (
         <div className="table-assignment-container">
+            {/* Debug panel removed to clean up the Tables tab UI */}
             {/* Waiting Matches Section */}
             <div className="waiting-matches-header-section">
                 {(() => {
@@ -445,7 +433,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                         {getParticipantName(match.opponent2?.id)}
                                                     </div>
                                                     <div className="waiting-match-details">
-                                                        Match #{match.number} • {getUserFriendlyRoundNumber(match)}
+                                                        Match #{match.number} • {friendlyRound(match)}
                                                     </div>
                                                 </div>
                                             );
@@ -492,7 +480,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                         {getParticipantName(match.opponent2?.id)}
                                                     </div>
                                                     <div className="waiting-match-details">
-                                                        Match #{match.number} • {getUserFriendlyRoundNumber(match)}
+                                                        Match #{match.number} • {friendlyRound(match)}
                                                     </div>
                                                 </div>
                                             );
@@ -539,7 +527,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                         {getParticipantName(match.opponent2?.id)}
                                                     </div>
                                                     <div className="waiting-match-details">
-                                                        Match #{match.number} • {getUserFriendlyRoundNumber(match)}
+                                                        Match #{match.number} • {friendlyRound(match)}
                                                     </div>
                                                 </div>
                                             );
@@ -622,7 +610,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                 {getParticipantName(assignedMatch.opponent2?.id)}
                                             </div>
                                             <div className="table-match-round">
-                                                Match #{assignedMatch.number} • {getUserFriendlyRoundNumber(assignedMatch)}
+                                                Match #{assignedMatch.number} • {friendlyRound(assignedMatch)}
                                             </div>
 
                                             <div className="table-actions">
