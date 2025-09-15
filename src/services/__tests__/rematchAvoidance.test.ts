@@ -111,11 +111,13 @@ describe('Double Elimination Rematch Avoidance', () => {
         const maxLBRound = Math.max(...totalBracket.losersMatches.map(m => m.round));
 
         if (match.bracket === 'winners') {
-            // WB semifinals is the second-to-last round
-            return match.round >= maxWBRound - 1;
+            // WB semifinals is when there are 4 players left (round 5 for 64 players)
+            // For 64 players: R1=64->32, R2=32->16, R3=16->8, R4=8->4, R5=4->2 (semis), R6=2->1 (finals)
+            return match.round >= maxWBRound - 1; // Rounds 5 and 6
         } else if (match.bracket === 'losers') {
-            // LB semifinals is the last few rounds
-            return match.round >= maxLBRound - 2;
+            // LB semifinals is very late - when there are only 4 players left in LB
+            // For 64 players with 10 LB rounds, semifinals would be around round 9-10
+            return match.round >= maxLBRound - 1; // Only rounds 9 and 10
         }
 
         return false;
