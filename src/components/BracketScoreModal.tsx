@@ -1,23 +1,38 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { LegacyMatch } from '../types';
+import { Match, Participant } from '../types';
 
-export interface ScoreModalProps {
-    match: LegacyMatch;
+export interface BracketScoreModalProps {
+    match: Match;
+    participants: Participant[];
     onClose: () => void;
-    onMatchUpdate: (match: LegacyMatch) => void;
+    onMatchUpdate: (matchId: number, opponent1Score: number, opponent2Score: number) => Promise<void>;
 }
 
 /**
- * Reusable ScoreModal component for entering match scores
+ * ScoreModal component specifically for brackets-manager Match objects
  */
-export const ScoreModal: React.FC<ScoreModalProps> = ({ match, onMatchUpdate, onClose }) => {
+export const BracketScoreModal: React.FC<BracketScoreModalProps> = ({
+    match,
+    participants,
+    onMatchUpdate,
+    onClose
+}) => {
+    // Get participant names
+    const participant1 = participants.find(p => p.id === match.opponent1?.id);
+    const participant2 = participants.find(p => p.id === match.opponent2?.id);
+
     // Pre-populate with existing scores if editing
-    const [score1, setScore1] = useState(match.score1?.toString() || '');
-    const [score2, setScore2] = useState(match.score2?.toString() || '');
+    const [score1, setScore1] = useState(match.opponent1?.score?.toString() || '');
+    const [score2, setScore2] = useState(match.opponent2?.score?.toString() || '');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const modalRef = useRef<HTMLDivElement>(null);
-    const isEditing = match.winner !== undefined && match.score1 !== undefined && match.score2 !== undefined;
+
+    const isEditing = match.opponent1?.score !== undefined && match.opponent2?.score !== undefined;
+
+    // Check if either participant is null (BYE)
+    const isByeMatch = !participant1?.name || !participant2?.name ||
+        participant1?.name === null || participant2?.name === null;
 
     useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
@@ -60,18 +75,11 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({ match, onMatchUpdate, on
 
         setIsSubmitting(true);
         try {
-            // Determine winner based on scores
-            const winner = s1 > s2 ? match.player1 : s2 > s1 ? match.player2 : null;
-
-            const updatedMatch: LegacyMatch = {
-                ...match,
-                score1: s1,
-                score2: s2,
-                winner
-            };
-
-            onMatchUpdate(updatedMatch);
+            await onMatchUpdate(match.id, s1, s2);
             onClose();
+        } catch (error) {
+            console.error('Error updating match:', error);
+            alert('Failed to update match. Please try again.');
         } finally {
             setIsSubmitting(false);
         }
@@ -92,6 +100,11 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({ match, onMatchUpdate, on
         return parseInt(score1, 10) === parseInt(score2, 10);
     };
 
+    // Don't show modal for BYE matches
+    if (isByeMatch) {
+        return null;
+    }
+
     return (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
             <div ref={modalRef} className="modal-content">
@@ -99,11 +112,22 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({ match, onMatchUpdate, on
                     {isEditing ? 'Edit Match Score' : 'Enter Match Score'}
                 </h3>
 
+                <div className="match-info" style={{
+                    marginBottom: 'var(--spacing-md)',
+                    padding: 'var(--spacing-sm)',
+                    backgroundColor: 'var(--color-background-secondary)',
+                    borderRadius: 'var(--border-radius)'
+                }}>
+                    <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+                        Match ID: {match.id} | Status: {match.status}
+                    </div>
+                </div>
+
                 <form onSubmit={handleSubmit}>
                     <div className="score-inputs">
                         <div className="score-input-row">
                             <label className="score-input-label" htmlFor="score1">
-                                {match.player1?.name}
+                                {participant1?.name || 'TBD'}
                             </label>
                             <input
                                 id="score1"
@@ -114,12 +138,13 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({ match, onMatchUpdate, on
                                 placeholder="0"
                                 required
                                 disabled={isSubmitting}
+                                min="0"
                             />
                         </div>
 
                         <div className="score-input-row">
                             <label className="score-input-label" htmlFor="score2">
-                                {match.player2?.name}
+                                {participant2?.name || 'TBD'}
                             </label>
                             <input
                                 id="score2"
@@ -130,6 +155,7 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({ match, onMatchUpdate, on
                                 placeholder="0"
                                 required
                                 disabled={isSubmitting}
+                                min="0"
                             />
                         </div>
                     </div>
@@ -178,13 +204,19 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({ match, onMatchUpdate, on
 };
 
 /**
- * Hook for managing score submission logic
+ * Hook for managing bracket score modal
  */
-export const useScoreModal = () => {
-    const [currentMatch, setCurrentMatch] = useState<LegacyMatch | null>(null);
+export const useBracketScoreModal = () => {
+    const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
 
-    const openModal = (match: LegacyMatch) => {
-        setCurrentMatch(match);
+    const openModal = (match: Match) => {
+        // brackets-manager uses numeric statuses:
+        // 1 = locked, 2 = ready, 3 = running, 4 = completed
+        // Only open modal for matches that can be scored (ready, running, or completed)
+        if (match.status === 2 || match.status === 3 || match.status === 4 ||
+            match.status === 'ready' || match.status === 'running' || match.status === 'completed') {
+            setCurrentMatch(match);
+        }
     };
 
     const closeModal = () => {
@@ -197,42 +229,4 @@ export const useScoreModal = () => {
         closeModal,
         isOpen: currentMatch !== null
     };
-};
-
-/**
- * Validate score input
- */
-export const validateScores = (score1: string, score2: string): {
-    isValid: boolean;
-    error?: string;
-} => {
-    const s1 = parseInt(score1, 10);
-    const s2 = parseInt(score2, 10);
-
-    if (score1.trim() === '' || score2.trim() === '') {
-        return { isValid: false, error: 'Both scores are required' };
-    }
-
-    if (isNaN(s1) || isNaN(s2)) {
-        return { isValid: false, error: 'Scores must be valid numbers' };
-    }
-
-    if (s1 < 0 || s2 < 0) {
-        return { isValid: false, error: 'Scores cannot be negative' };
-    }
-
-    if (s1 === s2) {
-        return { isValid: false, error: 'Scores cannot be tied - someone must win' };
-    }
-
-    return { isValid: true };
-};
-
-/**
- * Determine winner from scores
- */
-export const determineWinner = (match: LegacyMatch, score1: number, score2: number) => {
-    if (score1 > score2) return match.player1;
-    if (score2 > score1) return match.player2;
-    return null; // Tie (should not happen with validation)
 };

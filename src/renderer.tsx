@@ -4,19 +4,40 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import { PlayerUpload } from './components/PlayerUpload';
 import { PlayerList } from './components/PlayerList';
-import { Bracket } from './components/Bracket';
-import { TableAssignment } from './components/TableAssignment';
+import BracketsViewer from './components/BracketsViewer';
+import TableAssignmentNew from './components/TableAssignmentNew';
 import { ScoreModal } from './components/ScoreModal';
-import { Player, Match, TableSettings, TournamentState, BracketType, DoubleBracketState } from './types';
+import { BracketScoreModal, useBracketScoreModal } from './components/BracketScoreModal';
+import {
+    Player,
+    Match,
+    LegacyMatch,
+    TableSettings,
+    TournamentState,
+    BracketType,
+    BracketsData,
+    Tournament,
+    Participant
+} from './types';
 import { getDefaultTableName, shuffleArray, generateDemoPlayers, isBye } from './utils';
-import { generateSingleElim, generateDemoTournament, updateMatchWithScore, generateDoubleElim, flattenDoubleBracket, updateDoubleElimMatch, generateDemoDoubleElim } from './services/tournamentLogic';
-import { autoAssignMatches, assignMatchToTable, removeMatchFromTable, updateTableSettings } from './services/tableManager';
-
-
+import TournamentService from './services/tournamentService';
+import {
+    autoAssignMatches,
+    autoAssignLegacyMatches,
+    assignMatchToTable,
+    removeMatchFromTable,
+    updateTableSettings,
+    getTableMatch,
+    getTableLegacyMatch
+} from './services/tableManager';
 
 const App = () => {
+    // Tournament service instance
+    const [tournamentService] = useState(() => new TournamentService());
+
+    // State
     const [players, setPlayers] = useState<Player[]>([]);
-    const [matches, setMatches] = useState<Match[]>([]);
+    const [bracketsData, setBracketsData] = useState<BracketsData | null>(null);
     const [tournamentStarted, setTournamentStarted] = useState(false);
     const [tournamentComplete, setTournamentComplete] = useState(false);
     const [tableCount, setTableCount] = useState(1);
@@ -26,10 +47,15 @@ const App = () => {
     const [tableSettings, setTableSettings] = useState<{ [key: number]: { name: string, doNotAutoAssign: boolean } }>({
         1: { name: 'Stream', doNotAutoAssign: false }
     });
-    const [bracketType, setBracketType] = useState<BracketType>('single');
-    const [doubleBracket, setDoubleBracket] = useState<DoubleBracketState | null>(null);
+    const [bracketType, setBracketType] = useState<BracketType>('double');
+    const [tournamentName, setTournamentName] = useState<string>('');
 
-    const [tableScoreModal, setTableScoreModal] = useState<Match | null>(null);
+    // Legacy support
+    const [legacyMatches, setLegacyMatches] = useState<LegacyMatch[]>([]);
+
+    // Modal state
+    const [tableScoreModal, setTableScoreModal] = useState<Match | LegacyMatch | null>(null);
+    const bracketScoreModal = useBracketScoreModal();
 
     // Initialize table assignments array based on table count
     useEffect(() => {
@@ -47,885 +73,532 @@ const App = () => {
         });
     }, [tableCount, tournamentStarted]);
 
-    // Migrate table 1 name from old naming to new "Stream" naming
+    // Auto-assign matches to tables
     useEffect(() => {
-        if (tableSettings[1]?.name === 'Table 1') {
-            setTableSettings(prev => ({
-                ...prev,
-                [1]: { name: 'Stream', doNotAutoAssign: prev[1]?.doNotAutoAssign || false }
-            }));
-        }
-    }, [tableSettings]);
-
-
-
-    // Initialize table assignments array when tournament starts or table count changes
-    useEffect(() => {
-        if (!tournamentStarted) return;
-
-        // Only initialize the array structure, don't auto-assign matches
-        // The new auto-assign system will handle match assignments respecting exclusions
-        setTableAssignments(prev => {
-            const newAssignments = [...prev];
-            // Ensure array is the right length
-            while (newAssignments.length < tableCount) {
-                newAssignments.push(null);
-            }
-            // Trim if too long
-            if (newAssignments.length > tableCount) {
-                return newAssignments.slice(0, tableCount);
-            }
-            return newAssignments;
-        });
-    }, [tableCount, tournamentStarted]);
-
-
-    // Generate single elimination bracket with automatic byes
-
-
-    // Create demo tournament with example results
-    const createDemoTournament = () => {
-        const demoPlayers = generateDemoPlayers();
-
-        if (bracketType === 'double') {
-            // Generate 64-player double elimination demo with populated results
-            const demoMatches = generateDemoDoubleElim(demoPlayers);
-            setMatches(demoMatches);
-
-            // Extract the bracket structure from flattened matches
-            const winners = demoMatches.filter(m => m.bracket === 'winners');
-            const losers = demoMatches.filter(m => m.bracket === 'losers');
-            const finals = demoMatches.filter(m => m.bracket === 'finals');
-
-            setDoubleBracket({
-                winnersMatches: winners,
-                losersMatches: losers,
-                finalsMatches: finals,
-                winnersChampion: null,
-                losersChampion: null
-            });
-        } else {
-            const demoMatches = generateDemoTournament(demoPlayers);
-            setMatches(demoMatches);
-            setDoubleBracket(null);
-        }
-
-        // Set 64 players for demo
-        const finalPlayers = bracketType === 'double' ?
-            Array.from({ length: 64 }, (_, i) => ({
-                name: `Player ${i + 1}`,
-                phone: `555-${String(i + 1).padStart(4, '0')}`
-            })) : demoPlayers;
-
-        setPlayers(finalPlayers);
-        setTournamentStarted(true);
-    };
-
-    const startTournament = () => {
-        if (bracketType === 'double') {
-            const newDoubleBracket = generateDoubleElim(players);
-            setDoubleBracket(newDoubleBracket);
-            setMatches(flattenDoubleBracket(newDoubleBracket));
-        } else {
-            setMatches(generateSingleElim(players));
-            setDoubleBracket(null);
-        }
-        setTournamentStarted(true);
-    };
-
-    // Table/match movement logic
-    const moveMatchToTable = (match: Match, tableId?: number) => {
-        setMatches(prev => prev.map(m => m.id === match.id ? { ...m, table: tableId } : m));
-    };
-    // Return match to waiting
-    const returnMatchToWaiting = (match: Match) => {
-        // Remove from table assignments
-        const tableIndex = tableAssignments.findIndex(assignment => assignment === match.id);
-        if (tableIndex !== -1) {
-            setTableAssignments(removeMatchFromTable(tableAssignments, tableIndex));
-        }
-        // Also remove table property from match for backward compatibility
-        setMatches(prev => prev.map(m => m.id === match.id ? { ...m, table: undefined } : m));
-    };
-
-
-    // Always compute waiting matches from matches state (single elimination only)
-    // Exclude BYE matches from waiting list and matches currently assigned to tables
-
-    const waitingMatches = matches.filter(m =>
-        !tableAssignments.includes(m.id) &&
-        !m.winner &&
-        m.player1 &&
-        m.player2 &&
-        !isBye(m.player1) &&
-        !isBye(m.player2)
-    );
-
-    // Table management functions
-    const addTable = () => {
-        const newTableNumber = tableCount + 1;
-        setTableCount(prev => prev + 1);
-        setTableSettings(prev => ({
-            ...prev,
-            [newTableNumber]: { name: `Table ${newTableNumber}`, doNotAutoAssign: false }
-        }));
-    };
-
-    const removeTable = () => {
-        if (tableCount <= 1) return;
-
-        // Check if the last table has a match assigned
-        const lastTableMatch = matches.find(m => m.table === tableCount);
-        if (lastTableMatch) {
-            const confirmRemove = window.confirm(
-                `Table ${tableCount} has an active match (${lastTableMatch.player1?.name} vs ${lastTableMatch.player2?.name}). ` +
-                'The match will be returned to the waiting list. Continue?'
-            );
-
-            if (!confirmRemove) return;
-
-            // Move the match back to waiting before removing the table
-            returnMatchToWaiting(lastTableMatch);
-        }
-
-        setTableCount(prev => prev - 1);
-        // Remove table settings for the removed table
-        setTableSettings(prev => {
-            const newSettings = { ...prev };
-            delete newSettings[tableCount];
-            return newSettings;
-        });
-    };
-
-
-
-    // Table settings functions
-    const renameTable = (tableNumber: number, newName: string) => {
-        setTableSettings(updateTableSettings(tableSettings, tableNumber, { name: newName }));
-    };
-
-
-
-    // Table score modal functions - use imported ScoreModal functionality
-    const handleTableScoreSubmit = (match: Match, score1: number, score2: number, winner: Player | null) => {
-        // Create updated match with scores and winner
-        const updatedMatch = { ...match, score1, score2, winner };
-
-        if (bracketType === 'double' && doubleBracket) {
-            // Use double elimination update logic
-            console.log('🎯 Updating double elimination match:', {
-                matchId: updatedMatch.id,
-                winner: updatedMatch.winner?.name,
-                bracket: updatedMatch.bracket,
-                round: updatedMatch.round
-            });
-            const updatedBracket = updateDoubleElimMatch(
-                updatedMatch,
-                doubleBracket,
-                (isComplete) => setTournamentComplete(isComplete)
-            );
-            console.log('📊 Updated bracket state:', {
-                winnersMatches: updatedBracket.winnersMatches.length,
-                losersMatches: updatedBracket.losersMatches.length,
-                finalsMatches: updatedBracket.finalsMatches.length
-            });
-            setDoubleBracket(updatedBracket);
-            setMatches(flattenDoubleBracket(updatedBracket));
-        } else {
-            // Use single elimination update logic
-            const updatedMatches = updateMatchWithScore(
-                matches,
-                updatedMatch,
-                (isComplete) => setTournamentComplete(isComplete)
-            );
-            setMatches(updatedMatches);
-        }
-
-        // Remove the match from table assignments when completed
-        if (winner) {
-            const tableIndex = tableAssignments.findIndex(assignment => assignment === match.id);
-            if (tableIndex !== -1) {
-                setTableAssignments(removeMatchFromTable(tableAssignments, tableIndex));
-            }
-        }
-
-        setTableScoreModal(null);
-    };
-
-    const toggleTableDoNotAutoAssign = (tableNumber: number) => {
-        setTableSettings(prev => ({
-            ...prev,
-            [tableNumber]: {
-                name: prev[tableNumber]?.name || getDefaultTableName(tableNumber),
-                doNotAutoAssign: !(prev[tableNumber]?.doNotAutoAssign || false)
-            }
-        }));
-    };
-
-    // Auto-assign function for individual tables
-    const autoAssignToTable = (tableNumber: number) => {
-        const tableIndex = tableNumber - 1;
-        if (tableAssignments[tableIndex] !== null) return; // Table is occupied
-
-        const waitingMatch = waitingMatches[0]; // Get first waiting match
-        if (waitingMatch) {
-            setTableAssignments(assignMatchToTable(tableAssignments, waitingMatch.id, tableIndex));
-        }
-    };
-
-    // Auto-assign effect for tables with global auto-assign enabled and not individually excluded
-    React.useEffect(() => {
         if (!tournamentStarted || !globalAutoAssign) return;
 
-        // Check each table that should auto-assign (global enabled + not individually excluded)
-        for (let tableNumber = 1; tableNumber <= tableCount; tableNumber++) {
-            const tableIndex = tableNumber - 1;
-            const settings = tableSettings[tableNumber];
-
-            // Initialize settings if they don't exist
-            if (!settings) {
-                setTableSettings(prev => ({
-                    ...prev,
-                    [tableNumber]: { name: getDefaultTableName(tableNumber), doNotAutoAssign: false }
-                }));
-                continue; // Skip this iteration to let the state update
-            }
-
-            // Auto-assign if global is enabled AND table is not marked "do not auto assign"
-            if (!settings.doNotAutoAssign && tableAssignments[tableIndex] === null && waitingMatches.length > 0) {
-                autoAssignToTable(tableNumber);
-                break; // Only assign one at a time to prevent conflicts
-            }
+        if (bracketsData?.match) {
+            // New system
+            setTableAssignments(prev =>
+                autoAssignMatches(
+                    bracketsData.match,
+                    prev,
+                    tableCount,
+                    tableSettings,
+                    globalAutoAssign
+                )
+            );
+        } else if (legacyMatches.length > 0) {
+            // Legacy system
+            setTableAssignments(prev =>
+                autoAssignLegacyMatches(
+                    legacyMatches,
+                    prev,
+                    tableCount,
+                    tableSettings,
+                    globalAutoAssign
+                )
+            );
         }
-    }, [matches, tableAssignments, tableSettings, tournamentStarted, waitingMatches.length, globalAutoAssign]);
+    }, [bracketsData?.match, legacyMatches, tableCount, globalAutoAssign, tableSettings, tournamentStarted]);
+
+    // Handle CSV upload
+    const handleCSVUpload = (uploadedPlayers: Player[]) => {
+        setPlayers(uploadedPlayers);
+        console.log('Players uploaded:', uploadedPlayers);
+    };
+
+    // Handle player list changes
+    const handlePlayersChange = (updatedPlayers: Player[]) => {
+        setPlayers(updatedPlayers);
+    };
+
+    // Start tournament
+    const startTournament = async () => {
+        if (players.length === 0) {
+            alert('Please add some players first.');
+            return;
+        }
+
+        if (players.length < 2) {
+            alert('At least 2 players are required to start a tournament.');
+            return;
+        }
+
+        try {
+            console.log('Starting tournament with players:', players);
+
+            // Create tournament based on bracket type
+            const bracketTypeMap = {
+                'single': 'single_elimination' as const,
+                'double': 'double_elimination' as const
+            };
+
+            const data = await tournamentService.createTournament(
+                players,
+                bracketTypeMap[bracketType],
+                tournamentName
+            );
+
+            setBracketsData(data);
+            setTournamentStarted(true);
+            setTournamentComplete(false);
+
+            console.log('Tournament started with data:', data);
+        } catch (error) {
+            console.error('Error starting tournament:', error);
+            alert('Error starting tournament. Please try again.');
+        }
+    };
 
 
 
-    // Table management view component
-    const TableManagementView = () => (
-        <div className="table-management-container" style={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100vh',
-            padding: 'var(--spacing-md)'
-        }}>
-            <h1 className="app-title" style={{ textAlign: 'center', marginBottom: 'var(--spacing-lg)' }}>
-                Table Management
-            </h1>
+    // Handle match update (new system)
+    const handleMatchUpdate = async (matchId: number, opponent1Score?: number, opponent2Score?: number) => {
+        try {
+            let opponent1Result: 'win' | 'loss' | 'draw' | undefined;
+            let opponent2Result: 'win' | 'loss' | 'draw' | undefined;
 
-            {/* Waiting Matches - Horizontal on Left */}
-            <div className="waiting-matches-section" style={{
-                marginBottom: 'var(--spacing-lg)',
-                padding: 'var(--spacing-md)',
-                background: 'var(--bg-secondary)',
-                borderRadius: 'var(--radius-lg)',
-                border: '2px solid var(--accent-primary)'
-            }}>
-                <h3 style={{ color: 'var(--text-primary)', marginBottom: 'var(--spacing-md)' }}>
-                    Waiting Matches ({waitingMatches.length})
-                </h3>
-                <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 'var(--spacing-sm)',
-                    minHeight: '60px'
-                }}>
-                    {waitingMatches.length === 0 ? (
-                        <div style={{
-                            color: 'var(--text-muted)',
-                            fontStyle: 'italic',
-                            padding: 'var(--spacing-md)'
-                        }}>
-                            No matches waiting
-                        </div>
-                    ) : (
-                        waitingMatches.map(match => {
-                            const availableTables = tableAssignments
-                                .map((assignment, index) => assignment === null ? index + 1 : null)
-                                .filter(table => table !== null);
+            // Determine results based on scores
+            if (opponent1Score !== undefined && opponent2Score !== undefined) {
+                if (opponent1Score > opponent2Score) {
+                    opponent1Result = 'win';
+                    opponent2Result = 'loss';
+                } else if (opponent2Score > opponent1Score) {
+                    opponent1Result = 'loss';
+                    opponent2Result = 'win';
+                } else {
+                    opponent1Result = 'draw';
+                    opponent2Result = 'draw';
+                }
+            }
 
-                            return (
-                                <div key={match.id} className="waiting-match-card" style={{
-                                    background: 'var(--bg-tertiary)',
-                                    padding: 'var(--spacing-sm)',
-                                    borderRadius: 'var(--radius-md)',
-                                    border: '1px solid var(--border-primary)',
-                                    minWidth: '200px',
-                                    textAlign: 'center',
-                                    position: 'relative',
-                                    transition: 'all var(--transition-fast)'
-                                }}>
-                                    <div className="waiting-match-players" style={{
-                                        fontWeight: 600,
-                                        color: 'var(--text-primary)',
-                                        fontSize: 'clamp(var(--font-size-xs), 2vw, var(--font-size-sm))',
-                                        marginBottom: 'var(--spacing-xs)'
-                                    }}>
-                                        Match #{match.id}
-                                    </div>
-                                    <div className="waiting-match-round" style={{
-                                        color: 'var(--text-secondary)',
-                                        fontSize: 'clamp(var(--font-size-xs), 1.5vw, var(--font-size-xs))',
-                                        marginBottom: availableTables.length > 0 ? 'var(--spacing-xs)' : 0,
-                                        wordBreak: 'break-word',
-                                        lineHeight: 1.2
-                                    }}>
-                                        {match.player1?.name} vs {match.player2?.name}
-                                    </div>
-                                    {availableTables.length > 0 && (
-                                        <div style={{
-                                            display: 'flex',
-                                            flexWrap: 'wrap',
-                                            gap: '2px',
-                                            justifyContent: 'center',
-                                            marginTop: 'var(--spacing-xs)'
-                                        }}>
-                                            {availableTables.slice(0, 3).map(tableNum => (
-                                                <button
-                                                    key={tableNum}
-                                                    onClick={() => setTableAssignments(assignMatchToTable(tableAssignments, match.id, (tableNum as number) - 1))}
-                                                    className="quick-assign-button"
-                                                    title={`Assign to ${tableNum === 1 ? 'Stream' : `Table ${tableNum - 1}`}`}
-                                                >
-                                                    {tableNum === 1 ? 'S' : `T${tableNum - 1}`}
-                                                </button>
-                                            ))}
-                                            {availableTables.length > 3 && (
-                                                <span style={{
-                                                    fontSize: '10px',
-                                                    color: 'var(--text-muted)',
-                                                    padding: '2px'
-                                                }}>
-                                                    +{availableTables.length - 3}
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-            </div>
+            await tournamentService.updateMatch(
+                matchId,
+                opponent1Score,
+                opponent2Score,
+                opponent1Result,
+                opponent2Result
+            );
 
-            {/* Table Controls */}
-            <div className="table-controls" style={{
-                display: 'flex',
-                gap: 'var(--spacing-md)',
-                marginBottom: 'var(--spacing-lg)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                flexWrap: 'wrap'
-            }}>
-                <button onClick={addTable} className="primary">
-                    ➕ Add Table
-                </button>
-                <button onClick={removeTable} disabled={tableCount <= 1}>
-                    ➖ Remove Table
-                </button>
+            // Refresh tournament data
+            const updatedData = await tournamentService.getTournamentData();
+            setBracketsData(updatedData);
 
-                {/* Global Auto-Assign Toggle */}
-                <label
-                    className={`global-auto-assign-toggle ${globalAutoAssign ? 'active' : ''}`}
-                >
-                    <input
-                        type="checkbox"
-                        checked={globalAutoAssign}
-                        onChange={() => setGlobalAutoAssign(!globalAutoAssign)}
-                        className="global-auto-assign-checkbox"
-                    />
-                    🎯 Global Auto-Assign
-                </label>
+            // Check if tournament is complete
+            const isComplete = await tournamentService.isTournamentComplete();
+            setTournamentComplete(isComplete);
 
-                <div style={{
-                    color: 'var(--text-primary)',
-                    fontWeight: 600,
-                    padding: '0 var(--spacing-md)',
-                    textAlign: 'center'
-                }}>
-                    {tableCount} Table{tableCount !== 1 ? 's' : ''} • {waitingMatches.length} Waiting
-                </div>
-            </div>
+            console.log('Match updated:', { matchId, opponent1Score, opponent2Score });
+        } catch (error) {
+            console.error('Error updating match:', error);
+            alert('Error updating match. Please try again.');
+        }
+    };
 
-            {/* Tables Grid */}
-            <div className="tables-grid" style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-                gap: 'var(--spacing-lg)',
-                flex: 1
-            }}>
-                {Array.from({ length: tableCount }, (_, i) => {
-                    const tableNumber = i + 1;
-                    const assignedMatchId = tableAssignments[i];
-                    const assignedMatch = assignedMatchId ? matches.find(m => m.id === assignedMatchId) : null;
+    // Handle legacy match update
+    const handleLegacyMatchUpdate = (updatedMatch: LegacyMatch) => {
+        setLegacyMatches(prev =>
+            prev.map(m => m.id === updatedMatch.id ? updatedMatch : m)
+        );
+    };
 
-                    return (
-                        <div key={tableNumber} className="table-card" style={{
-                            background: assignedMatch ? 'var(--accent-secondary)' : 'var(--bg-secondary)',
-                            border: `2px solid ${assignedMatch ? 'var(--accent-primary)' : 'var(--border-primary)'}`,
-                            borderRadius: 'var(--radius-lg)',
-                            padding: 'var(--spacing-md)',
-                            textAlign: 'center',
-                            minHeight: '200px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between'
-                        }}>
-                            {/* Table Header with Name and Controls */}
-                            <div style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: 'var(--spacing-xs)',
-                                marginBottom: 'var(--spacing-sm)'
-                            }}>
-                                <input
-                                    key={`table-${tableNumber}-${tableSettings[tableNumber]?.name || getDefaultTableName(tableNumber)}`}
-                                    type="text"
-                                    defaultValue={tableSettings[tableNumber]?.name || getDefaultTableName(tableNumber)}
-                                    onBlur={(e) => {
-                                        const newName = e.target.value.trim();
-                                        const defaultName = tableSettings[tableNumber]?.name || getDefaultTableName(tableNumber);
-                                        if (newName && newName !== defaultName) {
-                                            renameTable(tableNumber, newName);
-                                        }
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            const newName = e.currentTarget.value.trim();
-                                            if (newName) {
-                                                renameTable(tableNumber, newName);
-                                            }
-                                            e.currentTarget.blur();
-                                        } else if (e.key === 'Escape') {
-                                            e.preventDefault();
-                                            // Reset to original value
-                                            e.currentTarget.value = tableSettings[tableNumber]?.name || getDefaultTableName(tableNumber);
-                                            e.currentTarget.blur();
-                                        }
-                                    }}
-                                    onFocus={(e) => {
-                                        // Select all text for easy editing
-                                        e.target.select();
-                                    }}
-                                    className="table-name-input"
-                                    style={{
-                                        color: assignedMatch ? 'var(--text-inverse)' : 'var(--text-primary)'
-                                    }}
-                                    placeholder="Table Name"
-                                />
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    gap: 'var(--spacing-xs)'
-                                }}>
-                                    <label
-                                        className="table-exclusion-label"
-                                        style={{
-                                            color: assignedMatch ? 'var(--text-inverse)' : 'var(--text-secondary)'
-                                        }}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={tableSettings[tableNumber]?.doNotAutoAssign || false}
-                                            onChange={() => toggleTableDoNotAutoAssign(tableNumber)}
-                                            className="table-exclusion-checkbox"
-                                        />
-                                        🚫 Exclude from auto-assign
-                                    </label>
-                                </div>
-                            </div>
+    // Handle match click from brackets viewer
+    const handleBracketMatchClick = (match: any) => {
+        // Skip BYE matches or invalid matches
+        if (!match || !match.id) {
+            return;
+        }
 
-                            {assignedMatch ? (
-                                <div>
-                                    <div style={{
-                                        color: 'var(--text-inverse)',
-                                        fontWeight: 600,
-                                        marginBottom: 'var(--spacing-sm)',
-                                        fontSize: 'var(--font-size-lg)'
-                                    }}>
-                                        Match #{assignedMatch.id}
-                                    </div>
-                                    <div style={{
-                                        color: 'var(--text-inverse)',
-                                        marginBottom: 'var(--spacing-md)'
-                                    }}>
-                                        {assignedMatch.player1?.name} vs {assignedMatch.player2?.name}
-                                    </div>
-                                    <div style={{
-                                        display: 'flex',
-                                        gap: 'var(--spacing-sm)',
-                                        justifyContent: 'center'
-                                    }}>
-                                        <button
-                                            onClick={() => setTableScoreModal(assignedMatch)}
-                                            style={{
-                                                background: 'var(--bg-primary)',
-                                                color: 'var(--text-primary)',
-                                                border: 'none',
-                                                padding: 'var(--spacing-xs) var(--spacing-sm)',
-                                                borderRadius: 'var(--radius-md)',
-                                                cursor: 'pointer',
-                                                fontSize: 'var(--font-size-xs)'
-                                            }}
-                                        >
-                                            📊 Score
-                                        </button>
-                                        <button
-                                            onClick={() => setTableAssignments(removeMatchFromTable(tableAssignments, i))}
-                                            style={{
-                                                background: 'var(--bg-primary)',
-                                                color: 'var(--text-primary)',
-                                                border: 'none',
-                                                padding: 'var(--spacing-xs) var(--spacing-sm)',
-                                                borderRadius: 'var(--radius-md)',
-                                                cursor: 'pointer',
-                                                fontSize: 'var(--font-size-xs)'
-                                            }}
-                                        >
-                                            🔄 Remove
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                    <div style={{
-                                        color: 'var(--text-muted)',
-                                        marginBottom: 'var(--spacing-md)',
-                                        fontStyle: 'italic'
-                                    }}>
-                                        {globalAutoAssign && !tableSettings[tableNumber]?.doNotAutoAssign ? 'Auto-assigning...' : 'Available'}
-                                    </div>
-                                    {waitingMatches.length > 0 && (tableSettings[tableNumber]?.doNotAutoAssign || !globalAutoAssign) && (
-                                        <button
-                                            onClick={() => autoAssignToTable(tableNumber)}
-                                            className="table-manual-assign-button"
-                                        >
-                                            📌 Assign Next Match
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+        // Check if this is a BYE match (one or both opponents are null/undefined)
+        const hasValidOpponents = match.opponent1 && match.opponent2 &&
+            match.opponent1.id && match.opponent2.id;
+
+        if (!hasValidOpponents) {
+            return;
+        }
+
+        // Convert the match object to our Match type and open bracket score modal
+        const bracketMatch: Match = {
+            id: match.id,
+            number: match.number || 0,
+            stage_id: match.stage_id || match.stageId || 0,
+            group_id: match.group_id || match.groupId || 0,
+            round_id: match.round_id || match.roundId || 0,
+            child_count: match.child_count || match.childCount || 0,
+            status: match.status || 'waiting',
+            opponent1: match.opponent1 || null,
+            opponent2: match.opponent2 || null
+        };
+
+        bracketScoreModal.openModal(bracketMatch);
+    };
+
+    // Handle table actions
+    const handleAssignToTable = (matchId: number, tableIndex: number) => {
+        setTableAssignments(prev => assignMatchToTable(prev, matchId, tableIndex));
+    };
+
+    const handleRemoveFromTable = (tableIndex: number) => {
+        setTableAssignments(prev => removeMatchFromTable(prev, tableIndex));
+    };
+
+    const handleTableSettingsUpdate = (tableNumber: number, updates: Partial<TableSettings>) => {
+        setTableSettings(prev => updateTableSettings(prev, tableNumber, updates));
+    };
+
+    // Handle bracket match score update
+    const handleBracketMatchUpdate = async (matchId: number, opponent1Score: number, opponent2Score: number) => {
+        try {
+            // Determine results based on scores
+            const opponent1Result = opponent1Score > opponent2Score ? 'win' : 'loss';
+            const opponent2Result = opponent2Score > opponent1Score ? 'win' : 'loss';
+
+            // Store current table assignments before updating
+            const currentTableAssignments = new Map<number, number>();
+            if (bracketsData?.match) {
+                bracketsData.match.forEach(match => {
+                    if (match.table !== null && match.table !== undefined) {
+                        currentTableAssignments.set(match.id, match.table);
+                    }
+                });
+            }
+
+            // Update the match via tournament service
+            await tournamentService.updateMatch(matchId, opponent1Score, opponent2Score, opponent1Result, opponent2Result);
+
+            // Refresh the brackets data
+            const updatedData = await tournamentService.getTournamentData();
+
+            // Restore table assignments except for the completed match
+            const restoredMatches = updatedData.match.map(match => {
+                // Don't restore table assignment for the completed match
+                if (match.id === matchId) {
+                    return { ...match, table: undefined };
+                }
+                // Restore table assignment for other matches
+                const tableId = currentTableAssignments.get(match.id);
+                return tableId !== undefined ? { ...match, table: tableId } : match;
+            });
+
+            setBracketsData({
+                ...updatedData,
+                match: restoredMatches
+            });
+        } catch (error) {
+            console.error('Error updating bracket match:', error);
+            throw error;
+        }
+    };
+
+    // Generate demo tournament
+    const generateDemo = () => {
+        const demoPlayers = generateDemoPlayers();
+        setPlayers(demoPlayers);
+    };
+
+    // Table assignment handlers
+    const handleMoveMatch = async (match: Match, tableId?: number) => {
+        try {
+            if (bracketsData) {
+                const updatedMatches = bracketsData.match.map(m =>
+                    m.id === match.id
+                        ? { ...m, table: tableId || undefined }
+                        : m
+                );
+                setBracketsData({
+                    ...bracketsData,
+                    match: updatedMatches
+                });
+            }
+        } catch (error) {
+            console.error('Error moving match:', error);
+        }
+    };
+
+    const handleReturnToWaiting = async (match: Match) => {
+        try {
+            if (bracketsData) {
+                const updatedMatches = bracketsData.match.map(m =>
+                    m.id === match.id
+                        ? { ...m, table: undefined }
+                        : m
+                );
+                setBracketsData({
+                    ...bracketsData,
+                    match: updatedMatches
+                });
+            }
+        } catch (error) {
+            console.error('Error returning match to waiting:', error);
+        }
+    };
+
+    const handleRemoveTable = () => {
+        if (tableCount <= 1) return; // Can't remove if only 1 table
+
+        try {
+            if (bracketsData) {
+                // Find matches assigned to the highest numbered table (the one being removed)
+                const tableToRemove = tableCount;
+                const matchesOnRemovedTable = bracketsData.match.filter(m => m.table === tableToRemove);
+
+                // Show confirmation if there are matches on the table being removed
+                if (matchesOnRemovedTable.length > 0) {
+                    const matchDetails = matchesOnRemovedTable.map(m => {
+                        const p1Name = bracketsData.participant.find(p => p.id === m.opponent1?.id)?.name || 'TBD';
+                        const p2Name = bracketsData.participant.find(p => p.id === m.opponent2?.id)?.name || 'TBD';
+                        return `Match #${m.number}: ${p1Name} vs ${p2Name}`;
+                    }).join('\n');
+
+                    const confirmed = confirm(
+                        `Table ${tableToRemove} has ${matchesOnRemovedTable.length} match(es) assigned:\n\n${matchDetails}\n\nRemoving this table will return these matches to waiting. Continue?`
                     );
-                })}
-            </div>
-        </div>
-    );
+
+                    if (!confirmed) {
+                        return; // User cancelled
+                    }
+                }
+
+                // Return those matches to waiting by setting their table to undefined
+                const updatedMatches = bracketsData.match.map(m =>
+                    m.table === tableToRemove
+                        ? { ...m, table: undefined }
+                        : m
+                );
+
+                // Update the bracket data
+                setBracketsData({
+                    ...bracketsData,
+                    match: updatedMatches
+                });
+
+                // Log the action for debugging
+                if (matchesOnRemovedTable.length > 0) {
+                    console.log(`Removed table ${tableToRemove}, returned ${matchesOnRemovedTable.length} matches to waiting`);
+                }
+            }
+
+            // Reduce table count
+            setTableCount(prev => Math.max(1, prev - 1));
+        } catch (error) {
+            console.error('Error removing table:', error);
+            alert('Error removing table. Please try again.');
+        }
+    };
+
+    const handleTableScore = async (match: Match, score1: number, score2: number) => {
+        try {
+            // Use the same logic as bracket match scoring
+            await handleBracketMatchUpdate(match.id, score1, score2);
+        } catch (error) {
+            console.error('Error updating table score:', error);
+        }
+    };
+
+    // Get current matches for table assignment
+    const getCurrentMatches = (): (Match | LegacyMatch)[] => {
+        if (bracketsData?.match) {
+            return bracketsData.match;
+        }
+        return legacyMatches;
+    };
+
+    // Get table match
+    const getActiveTableMatch = (tableIndex: number): Match | LegacyMatch | null => {
+        if (bracketsData?.match) {
+            return getTableMatch(bracketsData.match, tableAssignments, tableIndex);
+        }
+        return getTableLegacyMatch(legacyMatches, tableAssignments, tableIndex);
+    };
 
     return (
         <div className="app-container">
-            {/* Main Content Area */}
-            <div className="main-content" style={{ width: '100%' }}>
-                <h1 className="app-title">React Tournament Bracket Manager</h1>
-                {!tournamentStarted && (
-                    <div className="setup-section">
-                        <PlayerUpload onPlayersParsed={setPlayers} />
-                        <h2 style={{ color: 'var(--text-primary)', margin: 'var(--spacing-lg) 0 var(--spacing-md) 0' }}>Players</h2>
-                        <PlayerList players={players} onPlayersChange={setPlayers} />
+            <div className="header">
+                <div className="header-content">
+                    <div className="header-title">
+                        <h1>🏆 {tournamentName || 'Tournament Brackets'}</h1>
+                        {!tournamentStarted && players.length > 0 && (
+                            <p className="header-subtitle">
+                                {players.length} player{players.length !== 1 ? 's' : ''} ready
+                            </p>
+                        )}
+                        {tournamentStarted && bracketsData && (
+                            <p className="header-subtitle">
+                                {bracketsData.participant?.length || 0} participants • {bracketsData.match?.length || 0} matches
+                            </p>
+                        )}
+                    </div>
 
-                        <div className="bracket-type-selection" style={{
-                            margin: 'var(--spacing-lg) 0',
-                            padding: 'var(--spacing-md)',
-                            background: 'var(--surface-elevated)',
-                            borderRadius: 'var(--radius-lg)',
-                            border: '1px solid var(--border-color)'
-                        }}>
-                            <h3 style={{ color: 'var(--text-primary)', margin: '0 0 var(--spacing-md) 0', fontSize: 'var(--font-size-md)' }}>
-                                Tournament Type
-                            </h3>
-                            <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
-                                <label style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 'var(--spacing-sm)',
-                                    color: 'var(--text-primary)',
-                                    cursor: 'pointer',
-                                    fontSize: 'var(--font-size-sm)'
-                                }}>
+                    <div className="header-controls">
+                        {!tournamentStarted && (
+                            <div className="tournament-setup-controls">
+                                <div className="tournament-name-input">
+                                    <label htmlFor="tournament-name">Tournament Name</label>
                                     <input
-                                        type="radio"
-                                        name="bracketType"
-                                        value="single"
-                                        checked={bracketType === 'single'}
-                                        onChange={(e) => setBracketType(e.target.value as BracketType)}
+                                        id="tournament-name"
+                                        type="text"
+                                        value={tournamentName}
+                                        onChange={(e) => setTournamentName(e.target.value)}
+                                        placeholder="Enter tournament name..."
+                                        className="text-input"
                                     />
-                                    <span>
-                                        <strong>Single Elimination</strong>
-                                        <br />
-                                        <span style={{ color: 'var(--text-muted)' }}>One loss eliminates</span>
-                                    </span>
-                                </label>
-                                <label style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 'var(--spacing-sm)',
-                                    color: 'var(--text-primary)',
-                                    cursor: 'pointer',
-                                    fontSize: 'var(--font-size-sm)'
-                                }}>
-                                    <input
-                                        type="radio"
-                                        name="bracketType"
-                                        value="double"
-                                        checked={bracketType === 'double'}
+                                </div>
+
+                                <div className="bracket-type-selector">
+                                    <label htmlFor="bracket-type">Tournament Type</label>
+                                    <select
+                                        id="bracket-type"
+                                        value={bracketType}
                                         onChange={(e) => setBracketType(e.target.value as BracketType)}
-                                    />
-                                    <span>
-                                        <strong>Double Elimination</strong>
-                                        <br />
-                                        <span style={{ color: 'var(--text-muted)' }}>Two losses to eliminate</span>
-                                    </span>
-                                </label>
+                                        className="select-input"
+                                    >
+                                        <option value="single">Single Elimination</option>
+                                        <option value="double">Double Elimination</option>
+                                    </select>
+                                </div>
+
+                                <div className="action-buttons">
+                                    <button onClick={generateDemo} className="secondary-btn">
+                                        <span className="btn-icon">🎲</span>
+                                        Generate Demo
+                                    </button>
+                                    <button
+                                        onClick={startTournament}
+                                        className="primary-btn"
+                                        disabled={players.length < 2}
+                                    >
+                                        <span className="btn-icon">🚀</span>
+                                        Start Tournament
+                                        {players.length < 2 && (
+                                            <span className="btn-note">(Need 2+ players)</span>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'center', alignItems: 'center' }}>
-                            <button className="primary" onClick={startTournament} disabled={players.length < 2}>
-                                Start Tournament
-                            </button>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>or</span>
-                            <button
-                                onClick={createDemoTournament}
-                                style={{
-                                    background: 'var(--accent-secondary)',
-                                    color: 'var(--text-inverse)',
-                                    border: 'none',
-                                    borderRadius: 'var(--radius-md)',
-                                    padding: 'var(--spacing-sm) var(--spacing-md)',
-                                    fontSize: 'var(--font-size-sm)',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    transition: 'all var(--transition-fast)'
-                                }}
-                                onMouseOver={(e) => e.currentTarget.style.background = 'var(--accent-primary)'}
-                                onMouseOut={(e) => e.currentTarget.style.background = 'var(--accent-secondary)'}
-                            >
-                                🎯 View Demo Bracket
-                            </button>
-                        </div>
+                        )}
                     </div>
-                )}
-                {tournamentComplete && (
-                    <div className="tournament-complete-banner">
-                        <h2>🏆 Tournament Complete! 🏆</h2>
-                        <p>
-                            Champion: {(() => {
-                                if (bracketType === 'double') {
-                                    // For double elimination, check Grand Finals Reset first, then Grand Finals
-                                    const grandFinalsReset = matches.find(m => m.isGrandFinalsReset && m.winner);
-                                    if (grandFinalsReset) return grandFinalsReset.winner?.name || 'Unknown';
-
-                                    const grandFinals = matches.find(m => m.isGrandFinals && m.winner);
-                                    if (grandFinals) return grandFinals.winner?.name || 'Unknown';
-
-                                    return 'Unknown';
-                                } else {
-                                    // For single elimination, find winner of highest round
-                                    return matches.find(m => m.winner && m.round === Math.max(...matches.map(match => match.round)))?.winner?.name || 'Unknown';
-                                }
-                            })()}
-                        </p>
-                    </div>
-                )}
-
-                {/* Tab Navigation */}
-                {tournamentStarted && (
-                    <div className="tab-navigation" style={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        marginBottom: 'var(--spacing-lg)',
-                        borderBottom: '2px solid var(--border-primary)'
-                    }}>
-                        <button
-                            onClick={() => setActiveTab('bracket')}
-                            style={{
-                                background: activeTab === 'bracket' ? 'var(--accent-primary)' : 'transparent',
-                                color: activeTab === 'bracket' ? 'var(--text-inverse)' : 'var(--text-primary)',
-                                border: 'none',
-                                padding: 'var(--spacing-md) var(--spacing-lg)',
-                                borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
-                                cursor: 'pointer',
-                                fontSize: 'var(--font-size-md)',
-                                fontWeight: 600,
-                                marginRight: 'var(--spacing-xs)'
-                            }}
-                        >
-                            🏆 Tournament Bracket
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('tables')}
-                            style={{
-                                background: activeTab === 'tables' ? 'var(--accent-primary)' : 'transparent',
-                                color: activeTab === 'tables' ? 'var(--text-inverse)' : 'var(--text-primary)',
-                                border: 'none',
-                                padding: 'var(--spacing-md) var(--spacing-lg)',
-                                borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
-                                cursor: 'pointer',
-                                fontSize: 'var(--font-size-md)',
-                                fontWeight: 600
-                            }}
-                        >
-                            🎯 Table Management ({waitingMatches.length} waiting)
-                        </button>
-                    </div>
-                )}
-
-                {/* Tab Content */}
-                {tournamentStarted && activeTab === 'bracket' && (
-                    <Bracket
-                        players={players}
-                        matches={matches}
-                        onRemoveFromTable={returnMatchToWaiting}
-                        bracketType={bracketType}
-                        onMatchUpdate={(updatedMatch) => {
-                            // Remove match from table assignments if it now has a winner
-                            if (updatedMatch.winner) {
-                                const tableIndex = tableAssignments.findIndex(assignment => assignment === updatedMatch.id);
-                                if (tableIndex !== -1) {
-                                    setTableAssignments(prev => {
-                                        const newAssignments = [...prev];
-                                        newAssignments[tableIndex] = null;
-                                        return newAssignments;
-                                    });
-                                }
-                            }
-
-                            if (bracketType === 'double' && doubleBracket) {
-                                // Use double elimination update logic
-                                const updatedBracket = updateDoubleElimMatch(
-                                    updatedMatch,
-                                    doubleBracket,
-                                    (isComplete) => setTournamentComplete(isComplete)
-                                );
-                                setDoubleBracket(updatedBracket);
-                                setMatches(flattenDoubleBracket(updatedBracket));
-                            } else {
-                                // Use single elimination update logic
-                                setMatches(prevMatches => {
-                                    const originalMatch = prevMatches.find(m => m.id === updatedMatch.id);
-                                    if (!originalMatch) return prevMatches;
-
-                                    let newMatches = [...prevMatches];
-
-                                    // Update the match itself (ensure table property is cleared if match is completed)
-                                    const matchUpdate = updatedMatch.winner ? { ...updatedMatch, table: undefined } : updatedMatch;
-                                    newMatches = newMatches.map(m => m.id === updatedMatch.id ? matchUpdate : m);
-
-                                    // If this is an edit of a completed match, we need to handle cascade effects
-                                    const maxRound = Math.max(...newMatches.map(m => m.round));
-                                    if (originalMatch.winner && originalMatch.round < maxRound) {
-                                        // Only clear the specific path affected by the old winner, not all subsequent rounds
-                                        const clearAffectedPath = (matchId: number, currentRound: number) => {
-                                            if (currentRound >= maxRound) return;
-
-                                            const thisRoundMatches = newMatches.filter(m => m.round === currentRound);
-                                            const thisMatchIndex = thisRoundMatches.findIndex(m => m.id === matchId);
-                                            const nextRoundMatches = newMatches.filter(m => m.round === currentRound + 1);
-                                            const nextMatchIndex = Math.floor(thisMatchIndex / 2);
-                                            const nextMatch = nextRoundMatches[nextMatchIndex];
-
-                                            if (nextMatch) {
-                                                // Determine if this match's winner was in slot 1 or 2 of the next match
-                                                const isFirstSlot = (thisMatchIndex % 2) === 0;
-                                                const wasInNextMatch = isFirstSlot ?
-                                                    (nextMatch.player1 && nextMatch.player1.name === originalMatch.winner?.name) :
-                                                    (nextMatch.player2 && nextMatch.player2.name === originalMatch.winner?.name);
-
-                                                if (wasInNextMatch) {
-                                                    // Clear this player from the next match
-                                                    const updatedNextMatch: Match = {
-                                                        ...nextMatch,
-                                                        player1: isFirstSlot ? null : nextMatch.player1,
-                                                        player2: !isFirstSlot ? null : nextMatch.player2,
-                                                        winner: null
-                                                    };
-                                                    // Remove scores if match no longer has a winner
-                                                    delete updatedNextMatch.score1;
-                                                    delete updatedNextMatch.score2;
-
-                                                    newMatches = newMatches.map(m => m.id === nextMatch.id ? updatedNextMatch : m);
-
-                                                    // Continue clearing the path if this match had a winner
-                                                    if (nextMatch.winner) {
-                                                        clearAffectedPath(nextMatch.id, currentRound + 1);
-                                                    }
-                                                }
-                                            }
-                                        };
-
-                                        // Start clearing from the edited match
-                                        clearAffectedPath(originalMatch.id, originalMatch.round);
-                                    }
-
-                                    // Now advance the new winner through the bracket (if there is one)
-                                    if (updatedMatch.winner && updatedMatch.round < maxRound) {
-                                        const advanceWinner = (matchId: number, winner: Player, currentRound: number) => {
-                                            if (currentRound >= maxRound) return;
-
-                                            const thisRoundMatches = newMatches.filter(m => m.round === currentRound);
-                                            const thisMatchIndex = thisRoundMatches.findIndex(m => m.id === matchId);
-                                            const nextRoundMatches = newMatches.filter(m => m.round === currentRound + 1);
-                                            const nextMatchIndex = Math.floor(thisMatchIndex / 2);
-                                            const nextMatch = nextRoundMatches[nextMatchIndex];
-
-                                            if (nextMatch) {
-                                                const isFirstSlot = (thisMatchIndex % 2) === 0;
-                                                const updatedNextMatch = {
-                                                    ...nextMatch,
-                                                    player1: isFirstSlot ? winner : nextMatch.player1,
-                                                    player2: !isFirstSlot ? winner : nextMatch.player2,
-                                                };
-                                                newMatches = newMatches.map(m => m.id === nextMatch.id ? updatedNextMatch : m);
-                                            }
-                                        };
-
-                                        advanceWinner(updatedMatch.id, updatedMatch.winner, updatedMatch.round);
-                                    }
-
-                                    // Check if tournament is complete
-                                    if (updatedMatch.winner && updatedMatch.round === maxRound) {
-                                        setTournamentComplete(true);
-                                    } else {
-                                        // Check if tournament was complete but now isn't (due to editing)
-                                        const finalMatch = newMatches.find(m => m.round === maxRound);
-                                        if (!finalMatch?.winner) {
-                                            setTournamentComplete(false);
-                                        }
-                                    }
-
-                                    return newMatches;
-                                });
-                            }
-                        }}
-                    />
-                )}
-
-                {tournamentStarted && activeTab === 'tables' && (
-                    <TableManagementView />
-                )}
-
-                {/* Score Modal */}
-                {tableScoreModal && (
-                    <ScoreModal
-                        match={tableScoreModal}
-                        onSubmit={(score1: number, score2: number) => {
-                            let winner = null;
-                            if (score1 > score2) winner = tableScoreModal.player1;
-                            else if (score2 > score1) winner = tableScoreModal.player2;
-                            handleTableScoreSubmit(tableScoreModal, score1, score2, winner);
-                        }}
-                        onClose={() => setTableScoreModal(null)}
-                    />
-                )}
+                </div>
             </div>
+
+            {!tournamentStarted ? (
+                <div className="setup-container">
+                    <div className="setup-header">
+                        <h2>Setup Your Tournament</h2>
+                        <p>Upload a CSV file or add players manually to get started</p>
+                    </div>
+
+                    <div className="setup-content">
+                        <div className="upload-section">
+                            <PlayerUpload onPlayersParsed={handleCSVUpload} />
+                        </div>
+
+                        <div className="divider">
+                            <span>or</span>
+                        </div>
+
+                        <div className="players-section">
+                            <PlayerList
+                                players={players}
+                                onPlayersChange={handlePlayersChange}
+                            />
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="tournament-container">
+                    <div className="tournament-tabs">
+                        <button
+                            className={`tournament-tab ${activeTab === 'bracket' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('bracket')}
+                        >
+                            <span className="tab-icon">🏆</span>
+                            Tournament Bracket
+                        </button>
+                        <button
+                            className={`tournament-tab ${activeTab === 'tables' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('tables')}
+                        >
+                            <span className="tab-icon">🏓</span>
+                            Tables ({tableCount})
+                        </button>
+                    </div>
+
+                    <div className="tab-content">
+                        {activeTab === 'bracket' && (
+                            <div className="bracket-tab">
+                                {bracketsData ? (
+                                    <BracketsViewer
+                                        data={bracketsData}
+                                        onMatchClick={handleBracketMatchClick}
+                                    />
+                                ) : (
+                                    <div>No tournament data available</div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'tables' && (
+                            <div className="tables-tab">
+                                {bracketsData ? (
+                                    <TableAssignmentNew
+                                        tables={tableCount}
+                                        matches={bracketsData.match.filter(m => m.table !== null && m.table !== undefined)}
+                                        waitingMatches={bracketsData.match.filter(m => {
+                                            // Filter out BYE matches and only include ready matches that aren't assigned to tables
+                                            const isNotAssignedToTable = (m.table === null || m.table === undefined);
+                                            const isReadyMatch = m.status === 2; // Ready status
+                                            const hasValidOpponents = m.opponent1 && m.opponent2 &&
+                                                m.opponent1.id !== null && m.opponent2.id !== null;
+                                            return isNotAssignedToTable && isReadyMatch && hasValidOpponents;
+                                        })}
+                                        onMoveMatch={handleMoveMatch}
+                                        onReturnToWaiting={handleReturnToWaiting}
+                                        onSubmitScore={handleTableScore}
+                                        onAddTable={() => setTableCount(prev => prev + 1)}
+                                        onRemoveTable={handleRemoveTable}
+                                        participants={bracketsData.participant}
+                                    />
+                                ) : (
+                                    <div>No tournament data available</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {tableScoreModal && 'player1' in tableScoreModal && (
+                <ScoreModal
+                    match={tableScoreModal as LegacyMatch}
+                    onClose={() => setTableScoreModal(null)}
+                    onMatchUpdate={handleLegacyMatchUpdate}
+                />
+            )}
+
+            {bracketScoreModal.isOpen && bracketScoreModal.currentMatch && bracketsData && (
+                <BracketScoreModal
+                    match={bracketScoreModal.currentMatch}
+                    participants={bracketsData.participant}
+                    onClose={bracketScoreModal.closeModal}
+                    onMatchUpdate={handleBracketMatchUpdate}
+                />
+            )}
+
+            {tournamentComplete && (
+                <div className="tournament-complete">
+                    <h2>🏆 Tournament Complete! 🏆</h2>
+                </div>
+            )}
         </div>
     );
 };
 
+// Initialize React
 const container = document.getElementById('root');
 if (container) {
     const root = createRoot(container);
     root.render(<App />);
+} else {
+    console.error('Root container not found');
 }
