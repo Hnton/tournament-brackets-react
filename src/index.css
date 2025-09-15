@@ -1339,6 +1339,11 @@ input:focus-visible {
   margin-bottom: var(--spacing-xl);
 }
 
+/* Ensure header can contain absolutely positioned controls (popout button) */
+.header {
+  position: relative;
+}
+
 .header-content {
   display: flex;
   justify-content: space-between;
@@ -1346,6 +1351,18 @@ input:focus-visible {
   max-width: 1200px;
   margin: 0 auto;
   gap: var(--spacing-lg);
+}
+
+/* Popout control positioned to top-right of header */
+.popout-control {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 30;
+}
+
+.popout-control .primary {
+  padding: 8px 12px;
 }
 
 .header-title h1 {
@@ -1697,9 +1714,11 @@ input:focus-visible {
    ================================ */
 
 .tournament-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 var(--spacing-xl);
+  /* Make the main tournament container span the full width so tabs can reach the screen edge */
+  max-width: 100%;
+  margin: 0;
+  /* Keep a tiny horizontal breathing room to avoid flush-to-pixel edges on some displays */
+  padding: 0 8px;
 }
 
 .tournament-tabs {
@@ -1751,7 +1770,8 @@ input:focus-visible {
 .bracket-tab {
   background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
+  /* Reduce left/right padding so the tab content sits close to the screen edge */
+  padding: var(--spacing-xl) 12px;
   min-height: 600px;
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-md);
@@ -1767,10 +1787,30 @@ input:focus-visible {
   border-radius: 0;
 }
 
+/* Make brackets viewer responsive: contain wide SVGs and avoid horizontal scrolling */
+.brackets-viewer {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.brackets-viewer > * {
+  /* If the library renders an SVG or wide element, ensure it can shrink to container width */
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* If the library outputs an SVG with a viewBox, ensure it scales responsively */
+.brackets-viewer svg {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
 .tables-tab {
   background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
+  /* Reduce left/right padding so the tab content sits close to the screen edge */
+  padding: var(--spacing-xl) 12px;
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-md);
   min-height: 500px;
@@ -1787,7 +1827,8 @@ input:focus-visible {
 .waiting-matches-header-section {
   background: var(--bg-secondary);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
+  /* tighten horizontal padding to get content closer to edges */
+  padding: var(--spacing-lg) 8px;
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-sm);
 }
@@ -1828,7 +1869,8 @@ input:focus-visible {
   flex: 1;
   background: var(--bg-secondary);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
+  /* tighten horizontal padding to bring content closer to edges */
+  padding: var(--spacing-lg) 8px;
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-sm);
   overflow-y: auto;

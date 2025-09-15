@@ -1,4 +1,4 @@
-import { Match, LegacyMatch, TableSettings, TableSettingsMap } from '../types';
+import { Match, TableSettings, TableSettingsMap } from '../types';
 import { getDefaultTableName, isBye } from '../utils';
 
 /**
@@ -16,23 +16,6 @@ export const getWaitingMatches = (
         m.opponent1.id !== null &&
         m.opponent2.id !== null &&
         !m.table
-    );
-};
-
-/**
- * Get all legacy matches that are waiting to be assigned to tables
- */
-export const getWaitingLegacyMatches = (
-    matches: LegacyMatch[],
-    tableAssignments: (number | null)[]
-): LegacyMatch[] => {
-    return matches.filter(m =>
-        !tableAssignments.includes(m.id) &&
-        !m.winner &&
-        m.player1 &&
-        m.player2 &&
-        !isBye(m.player1) &&
-        !isBye(m.player2)
     );
 };
 
@@ -65,43 +48,6 @@ export const autoAssignMatches = (
     if (!globalAutoAssign) return tableAssignments;
 
     const waitingMatches = getWaitingMatches(matches, tableAssignments);
-    const newAssignments = [...tableAssignments];
-
-    // Find available tables that should auto-assign
-    for (let tableNumber = 1; tableNumber <= tableCount; tableNumber++) {
-        const tableIndex = tableNumber - 1;
-        const settings = tableSettings[tableNumber];
-
-        // Skip if table is occupied or excluded from auto-assign
-        if (newAssignments[tableIndex] !== null || settings?.doNotAutoAssign) {
-            continue;
-        }
-
-        // Assign first available waiting match
-        if (waitingMatches.length > 0) {
-            const waitingMatch = waitingMatches.shift(); // Remove from waiting list
-            if (waitingMatch) {
-                newAssignments[tableIndex] = waitingMatch.id;
-            }
-        }
-    }
-
-    return newAssignments;
-};
-
-/**
- * Auto-assign legacy matches to tables based on settings
- */
-export const autoAssignLegacyMatches = (
-    matches: LegacyMatch[],
-    tableAssignments: (number | null)[],
-    tableCount: number,
-    tableSettings: TableSettingsMap,
-    globalAutoAssign: boolean
-): (number | null)[] => {
-    if (!globalAutoAssign) return tableAssignments;
-
-    const waitingMatches = getWaitingLegacyMatches(matches, tableAssignments);
     const newAssignments = [...tableAssignments];
 
     // Find available tables that should auto-assign
@@ -254,20 +200,6 @@ export const getTableMatch = (
     tableAssignments: (number | null)[],
     tableIndex: number
 ): Match | null => {
-    const assignedMatchId = tableAssignments[tableIndex];
-    if (!assignedMatchId) return null;
-
-    return matches.find(m => m.id === assignedMatchId) || null;
-};
-
-/**
- * Check if a table has an active legacy match and get match details
- */
-export const getTableLegacyMatch = (
-    matches: LegacyMatch[],
-    tableAssignments: (number | null)[],
-    tableIndex: number
-): LegacyMatch | null => {
     const assignedMatchId = tableAssignments[tableIndex];
     if (!assignedMatchId) return null;
 

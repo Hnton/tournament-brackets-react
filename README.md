@@ -94,17 +94,16 @@ npm run make
 ```
 src/
 ├── 📁 components/           # React UI components
-│   ├── Bracket.tsx         # Tournament bracket visualization
-│   ├── BracketTree.tsx     # Bracket tree structure
-│   ├── PlayerList.tsx      # Player management
-│   ├── PlayerUpload.tsx    # CSV import functionality
-│   ├── ScoreModal.tsx      # Unified scoring interface
-│   ├── TableAssignment.tsx # Table management UI
-│   └── Tooltip.tsx         # UI tooltips
+│   ├── BracketScoreModal.tsx    # Bracket scoring interface
+│   ├── BracketsViewer.tsx       # Tournament bracket visualization
+│   ├── PlayerList.tsx           # Player management
+│   ├── PlayerUpload.tsx         # CSV import functionality
+│   └── TableAssignmentNew.tsx   # Table management UI
 │
 ├── 📁 services/            # Business logic & data management
+│   ├── memoryStorage.ts    # In-memory storage for brackets-manager
 │   ├── tableManager.ts     # Table assignment algorithms
-│   └── tournamentLogic.ts  # Tournament bracket logic
+│   └── tournamentService.ts # Tournament management service
 │
 ├── 📁 types/              # TypeScript type definitions
 │   └── index.ts           # Core interfaces (Player, Match, etc.)

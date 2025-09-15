@@ -5,13 +5,12 @@ import './index.css';
 import { PlayerUpload } from './components/PlayerUpload';
 import { PlayerList } from './components/PlayerList';
 import BracketsViewer from './components/BracketsViewer';
+import BracketsPopout from './components/BracketsPopout';
 import TableAssignmentNew from './components/TableAssignmentNew';
-import { ScoreModal } from './components/ScoreModal';
 import { BracketScoreModal, useBracketScoreModal } from './components/BracketScoreModal';
 import {
     Player,
     Match,
-    LegacyMatch,
     TableSettings,
     TournamentState,
     BracketType,
@@ -23,15 +22,15 @@ import { getDefaultTableName, shuffleArray, generateDemoPlayers, isBye } from '.
 import TournamentService from './services/tournamentService';
 import {
     autoAssignMatches,
-    autoAssignLegacyMatches,
     assignMatchToTable,
     removeMatchFromTable,
     updateTableSettings,
-    getTableMatch,
-    getTableLegacyMatch
+    getTableMatch
 } from './services/tableManager';
 
 const App = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isPopout = urlParams.get('popout') === 'bracket';
     // Tournament service instance
     const [tournamentService] = useState(() => new TournamentService());
 
@@ -50,11 +49,7 @@ const App = () => {
     const [bracketType, setBracketType] = useState<BracketType>('double');
     const [tournamentName, setTournamentName] = useState<string>('');
 
-    // Legacy support
-    const [legacyMatches, setLegacyMatches] = useState<LegacyMatch[]>([]);
-
     // Modal state
-    const [tableScoreModal, setTableScoreModal] = useState<Match | LegacyMatch | null>(null);
     const bracketScoreModal = useBracketScoreModal();
 
     // Initialize table assignments array based on table count
@@ -78,7 +73,6 @@ const App = () => {
         if (!tournamentStarted || !globalAutoAssign) return;
 
         if (bracketsData?.match) {
-            // New system
             setTableAssignments(prev =>
                 autoAssignMatches(
                     bracketsData.match,
@@ -88,19 +82,19 @@ const App = () => {
                     globalAutoAssign
                 )
             );
-        } else if (legacyMatches.length > 0) {
-            // Legacy system
-            setTableAssignments(prev =>
-                autoAssignLegacyMatches(
-                    legacyMatches,
-                    prev,
-                    tableCount,
-                    tableSettings,
-                    globalAutoAssign
-                )
-            );
         }
-    }, [bracketsData?.match, legacyMatches, tableCount, globalAutoAssign, tableSettings, tournamentStarted]);
+    }, [bracketsData?.match, tableCount, globalAutoAssign, tableSettings, tournamentStarted]);
+
+    // Keep a copy of the latest brackets data in localStorage so popout windows stay in sync
+    useEffect(() => {
+        try {
+            if (bracketsData) {
+                localStorage.setItem('tournament:bracketsData', JSON.stringify(bracketsData));
+            }
+        } catch (e) {
+            console.error('Failed to persist bracketsData to localStorage', e);
+        }
+    }, [bracketsData]);
 
     // Handle CSV upload
     const handleCSVUpload = (uploadedPlayers: Player[]) => {
@@ -128,6 +122,10 @@ const App = () => {
         try {
             console.log('Starting tournament with players:', players);
 
+            // Randomize players before starting tournament
+            const shuffledPlayers = shuffleArray(players);
+            console.log('Players after shuffling:', shuffledPlayers);
+
             // Create tournament based on bracket type
             const bracketTypeMap = {
                 'single': 'single_elimination' as const,
@@ -135,7 +133,7 @@ const App = () => {
             };
 
             const data = await tournamentService.createTournament(
-                players,
+                shuffledPlayers,
                 bracketTypeMap[bracketType],
                 tournamentName
             );
@@ -194,13 +192,6 @@ const App = () => {
             console.error('Error updating match:', error);
             alert('Error updating match. Please try again.');
         }
-    };
-
-    // Handle legacy match update
-    const handleLegacyMatchUpdate = (updatedMatch: LegacyMatch) => {
-        setLegacyMatches(prev =>
-            prev.map(m => m.id === updatedMatch.id ? updatedMatch : m)
-        );
     };
 
     // Handle match click from brackets viewer
@@ -397,20 +388,22 @@ const App = () => {
     };
 
     // Get current matches for table assignment
-    const getCurrentMatches = (): (Match | LegacyMatch)[] => {
-        if (bracketsData?.match) {
-            return bracketsData.match;
-        }
-        return legacyMatches;
+    const getCurrentMatches = (): Match[] => {
+        return bracketsData?.match || [];
     };
 
     // Get table match
-    const getActiveTableMatch = (tableIndex: number): Match | LegacyMatch | null => {
+    const getActiveTableMatch = (tableIndex: number): Match | null => {
         if (bracketsData?.match) {
             return getTableMatch(bracketsData.match, tableAssignments, tableIndex);
         }
-        return getTableLegacyMatch(legacyMatches, tableAssignments, tableIndex);
+        return null;
     };
+
+    if (isPopout) {
+        // If opened as a popout, render the standalone bracket popout view
+        return <BracketsPopout />;
+    }
 
     return (
         <div className="app-container">
@@ -431,6 +424,7 @@ const App = () => {
                     </div>
 
                     <div className="header-controls">
+                        {/* tournament setup controls appear here when not started */}
                         {!tournamentStarted && (
                             <div className="tournament-setup-controls">
                                 <div className="tournament-name-input">
@@ -478,6 +472,26 @@ const App = () => {
                             </div>
                         )}
                     </div>
+
+                    {/* Popout button positioned absolutely in header */}
+                    {tournamentStarted && bracketsData && (
+                        <div className="popout-control">
+                            <button
+                                className="primary"
+                                onClick={() => {
+                                    try {
+                                        localStorage.setItem('tournament:bracketsData', JSON.stringify(bracketsData));
+                                    } catch (e) {
+                                        console.error('Failed to store brackets data for popout', e);
+                                    }
+                                    const url = `${window.location.origin}${window.location.pathname}?popout=bracket`;
+                                    window.open(url, '_blank', 'width=1200,height=800');
+                                }}
+                            >
+                                Popout Bracket
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -552,6 +566,7 @@ const App = () => {
                                                 m.opponent1.id !== null && m.opponent2.id !== null;
                                             return isNotAssignedToTable && isReadyMatch && hasValidOpponents;
                                         })}
+                                        allMatches={bracketsData.match}
                                         onMoveMatch={handleMoveMatch}
                                         onReturnToWaiting={handleReturnToWaiting}
                                         onSubmitScore={handleTableScore}
@@ -566,14 +581,6 @@ const App = () => {
                         )}
                     </div>
                 </div>
-            )}
-
-            {tableScoreModal && 'player1' in tableScoreModal && (
-                <ScoreModal
-                    match={tableScoreModal as LegacyMatch}
-                    onClose={() => setTableScoreModal(null)}
-                    onMatchUpdate={handleLegacyMatchUpdate}
-                />
             )}
 
             {bracketScoreModal.isOpen && bracketScoreModal.currentMatch && bracketsData && (

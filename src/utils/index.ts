@@ -44,17 +44,3 @@ export const shuffleArray = <T>(array: T[]): T[] => {
     return shuffled;
 };
 
-/**
- * Generate random score between 1 and 3, ensuring no ties
- */
-export const generateRandomScores = (): { score1: number; score2: number } => {
-    const score1 = Math.floor(Math.random() * 3) + 1;
-    let score2 = Math.floor(Math.random() * 3) + 1;
-
-    // Prevent ties
-    if (score1 === score2) {
-        score2 = score1 + 1;
-    }
-
-    return { score1, score2 };
-};

@@ -161,6 +161,7 @@ interface TableAssignmentProps {
     onAddTable: () => void;
     onRemoveTable: () => void;
     participants: Participant[];
+    allMatches?: Match[]; // All tournament matches for proper round calculation
 }
 
 export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
@@ -172,9 +173,29 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
     onSubmitScore,
     onAddTable,
     onRemoveTable,
-    participants
+    participants,
+    allMatches
 }) => {
     const [scoreModal, setScoreModal] = React.useState<Match | null>(null);
+
+    // Helper function to get user-friendly round number for display
+    const getUserFriendlyRoundNumber = (match: Match): string => {
+        if (match.group_id === 1) {
+            // Winners Bracket: round_id directly corresponds to WB round number
+            return `WB Round ${match.round_id}`;
+        } else if (match.group_id === 2) {
+            // Losers Bracket: Calculate LB round number based on match distribution
+            // Use allMatches if available, otherwise fall back to matches + waitingMatches
+            const tournamentMatches = allMatches || [...matches, ...waitingMatches];
+            const allLBMatches = tournamentMatches.filter(m => m.group_id === 2);
+            const uniqueRoundIds = [...new Set(allLBMatches.map(m => m.round_id))].sort((a, b) => a - b);
+            const lbRoundNumber = uniqueRoundIds.indexOf(match.round_id) + 1;
+            return lbRoundNumber > 0 ? `LB Round ${lbRoundNumber}` : `Round ${match.round_id}`;
+        } else {
+            // Grand Finals or other special matches
+            return `Finals`;
+        }
+    };
 
     // Calculate priority score for a match based on double elimination tournament flow
     const getMatchPriority = (match: Match): number => {
@@ -256,10 +277,30 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
 
         const assignedMatches = getAssignedMatchesByBracket();
 
-        // Group available matches by bracket and round
-        const wbMatches = availableMatches.filter(m => m.group_id === 1);
-        const lbMatches = availableMatches.filter(m => m.group_id === 2);
-        const gfMatches = availableMatches.filter(m => m.group_id >= 3);
+        // Build a set of participant IDs currently playing to avoid double-assigning a player
+        const currentlyPlaying = new Set<number>();
+        const assigned = matches.filter(m => m.table !== null && m.table !== undefined);
+        assigned.forEach(a => {
+            if (a.opponent1 && a.opponent1.id != null) currentlyPlaying.add(a.opponent1.id);
+            if (a.opponent2 && a.opponent2.id != null) currentlyPlaying.add(a.opponent2.id);
+        });
+
+        // Exclude any available matches where one of the opponents is already playing
+        const filteredAvailable = availableMatches.filter(m => {
+            const o1 = m.opponent1 && m.opponent1.id != null ? m.opponent1.id : null;
+            const o2 = m.opponent2 && m.opponent2.id != null ? m.opponent2.id : null;
+            if (o1 !== null && currentlyPlaying.has(o1)) return false;
+            if (o2 !== null && currentlyPlaying.has(o2)) return false;
+            return true;
+        });
+
+        // If nothing remains after filtering, fallback to original availableMatches (safe fallback)
+        const usableMatches = filteredAvailable.length > 0 ? filteredAvailable : availableMatches;
+
+        // Group usable matches by bracket and round
+        const wbMatches = usableMatches.filter(m => m.group_id === 1);
+        const lbMatches = usableMatches.filter(m => m.group_id === 2);
+        const gfMatches = usableMatches.filter(m => m.group_id >= 3);
 
         // Priority 1: Grand Finals (when available, always highest priority)
         if (gfMatches.length > 0) {
@@ -404,7 +445,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                         {getParticipantName(match.opponent2?.id)}
                                                     </div>
                                                     <div className="waiting-match-details">
-                                                        Match #{match.number} • Round {match.round_id}
+                                                        Match #{match.number} • {getUserFriendlyRoundNumber(match)}
                                                     </div>
                                                 </div>
                                             );
@@ -451,7 +492,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                         {getParticipantName(match.opponent2?.id)}
                                                     </div>
                                                     <div className="waiting-match-details">
-                                                        Match #{match.number} • Round {match.round_id}
+                                                        Match #{match.number} • {getUserFriendlyRoundNumber(match)}
                                                     </div>
                                                 </div>
                                             );
@@ -498,7 +539,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                         {getParticipantName(match.opponent2?.id)}
                                                     </div>
                                                     <div className="waiting-match-details">
-                                                        Match #{match.number} • Round {match.round_id}
+                                                        Match #{match.number} • {getUserFriendlyRoundNumber(match)}
                                                     </div>
                                                 </div>
                                             );
@@ -543,7 +584,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                         <button
                             onClick={onAddTable}
                             className="table-control-btn add-table-btn"
-                            disabled={tables >= 16}
+                            disabled={tables >= 100}
                         >
                             + Add Table
                         </button>
@@ -581,7 +622,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                 {getParticipantName(assignedMatch.opponent2?.id)}
                                             </div>
                                             <div className="table-match-round">
-                                                Match #{assignedMatch.number} • Round {assignedMatch.round_id}
+                                                Match #{assignedMatch.number} • {getUserFriendlyRoundNumber(assignedMatch)}
                                             </div>
 
                                             <div className="table-actions">

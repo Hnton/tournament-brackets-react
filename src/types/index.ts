@@ -68,21 +68,6 @@ export interface Player {
     phone: string;
 }
 
-// Legacy Match interface for backward compatibility during transition
-export interface LegacyMatch {
-    id: number;
-    round: number;
-    player1: Player | null;
-    player2: Player | null;
-    winner?: Player | null;
-    score1?: number;
-    score2?: number;
-    table?: number | undefined;
-    bracket?: 'winners' | 'losers' | 'finals';
-    isGrandFinals?: boolean;
-    isGrandFinalsReset?: boolean;
-}
-
 export interface TableSettings {
     name: string;
     doNotAutoAssign: boolean;
@@ -94,9 +79,6 @@ export interface TableSettingsMap {
 
 export type TabType = 'bracket' | 'tables';
 export type BracketType = 'single' | 'double';
-
-// Types for the algorithmic double elimination bracket generation (legacy - kept for compatibility)
-// These may be removed in future versions as the system migrates to brackets-manager
 
 // Tournament data structure compatible with brackets-manager
 export interface Tournament {
@@ -125,6 +107,4 @@ export interface TournamentState {
     globalAutoAssign: boolean;
     tableSettings: TableSettingsMap;
     bracketType: BracketType;
-    // Keep legacy fields for transition
-    matches: LegacyMatch[];
 }

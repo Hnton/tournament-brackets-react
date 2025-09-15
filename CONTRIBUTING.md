@@ -147,14 +147,14 @@ Releases are automated via GitHub Actions:
 ## 🏗️ Architecture Notes
 
 ### Tournament Logic
-- **Double elimination algorithms** in `src/services/tournamentLogic.ts`
-- **Rematch avoidance** uses cross-stream placement
+- **Tournament management** using `brackets-manager` library in `src/services/tournamentService.ts`
+- **Table assignment algorithms** in `src/services/tableManager.ts`
 - **Mathematical correctness** for all bracket sizes (4-512 players)
 
 ### Key Components
-- **Bracket.tsx**: Main tournament bracket display
-- **TableAssignment.tsx**: Table management interface
-- **ScoreModal.tsx**: Match scoring system
+- **BracketsViewer.tsx**: Tournament bracket visualization
+- **TableAssignmentNew.tsx**: Table management interface with integrated scoring
+- **BracketScoreModal.tsx**: Match scoring system
 - **PlayerList.tsx**: Player management
 
 ### Build System
