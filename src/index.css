@@ -1793,7 +1793,7 @@ input:focus-visible {
   overflow-x: hidden;
 }
 
-.brackets-viewer > * {
+.brackets-viewer>* {
   /* If the library renders an SVG or wide element, ensure it can shrink to container width */
   max-width: 100%;
   box-sizing: border-box;
