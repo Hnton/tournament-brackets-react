@@ -51,4 +51,4 @@ git push origin $newVersion
 
 Write-Host "✅ Release $newVersion created successfully!" -ForegroundColor Green
 Write-Host "📦 GitHub Actions will now build and publish the release automatically" -ForegroundColor Blue
-Write-Host "🔗 Check progress at: https://github.com/Hnton/tournament-brackets-react/actions" -ForegroundColor Blue
+Write-Host "-> Check progress at: https://github.com/Hnton/tournament-brackets-react/actions" -ForegroundColor Blue
