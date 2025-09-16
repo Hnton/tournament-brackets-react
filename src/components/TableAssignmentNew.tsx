@@ -182,6 +182,27 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
     allMatches
 }) => {
     const [scoreModal, setScoreModal] = React.useState<Match | null>(null);
+    // selected table per waiting match id
+    const [selectedTableByMatch, setSelectedTableByMatch] = React.useState<Record<number, number | null>>({});
+
+    const setSelectedTable = (matchId: number, tableId: number | null) => {
+        setSelectedTableByMatch(prev => ({ ...prev, [matchId]: tableId }));
+    };
+
+    // If a match is present in waitingMatches (returned to waiting), clear any selected table
+    useEffect(() => {
+        if (!waitingMatches || waitingMatches.length === 0) return;
+        let changed = false;
+        const next = { ...selectedTableByMatch };
+        waitingMatches.forEach(m => {
+            if (next[m.id] != null) {
+                next[m.id] = null;
+                changed = true;
+            }
+        });
+        if (changed) setSelectedTableByMatch(next);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [waitingMatches]);
 
     // Use shared utility for friendly round labels
     const friendlyRound = (m: Match) => getUserFriendlyRoundNumber(m, allMatches);
@@ -413,24 +434,37 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                 <div
                                                     key={match.id}
                                                     className="waiting-match-card winners-bracket"
-                                                    onClick={() => {
-                                                        // Find first available table
-                                                        const occupiedTables = new Set(
-                                                            matches.filter(m => m.table !== null && m.table !== undefined).map(m => m.table as number)
-                                                        );
-                                                        const availableTable = Array.from({ length: tables }, (_, i) => i + 1)
-                                                            .find(tableId => !occupiedTables.has(tableId));
-
-                                                        if (availableTable) {
-                                                            onMoveMatch(match, availableTable);
-                                                        }
-                                                    }}
-                                                    title="Click to assign to first available table"
                                                 >
                                                     <div className="waiting-match-players">
                                                         {getParticipantName(match.opponent1?.id)}
                                                         <span className="waiting-match-vs"> vs </span>
                                                         {getParticipantName(match.opponent2?.id)}
+                                                    </div>
+                                                    <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                        <select
+                                                            value={selectedTableByMatch[match.id] ?? ''}
+                                                            onChange={(e) => setSelectedTable(match.id, e.target.value ? parseInt(e.target.value, 10) : null)}
+                                                            aria-label={`Select table for match ${match.number}`}
+                                                        >
+                                                            <option value="">Pick table...</option>
+                                                            {Array.from({ length: tables }).map((_, ti) => {
+                                                                const tnum = ti + 1;
+                                                                const occupied = matches.some(mm => mm.table === tnum);
+                                                                return (
+                                                                    <option key={tnum} value={tnum} disabled={occupied}>{tnum === 1 ? 'Stream' : `Table ${tnum - 1}`}</option>
+                                                                );
+                                                            })}
+                                                        </select>
+                                                        <button
+                                                            className="table-action-btn assign-specific-btn"
+                                                            onClick={() => {
+                                                                const tid = selectedTableByMatch[match.id];
+                                                                if (tid) onMoveMatch(match, tid);
+                                                            }}
+                                                            disabled={!selectedTableByMatch[match.id]}
+                                                        >
+                                                            Assign
+                                                        </button>
                                                     </div>
                                                     <div className="waiting-match-details">
                                                         Match #{match.number} • {friendlyRound(match)}
@@ -460,24 +494,37 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                 <div
                                                     key={match.id}
                                                     className="waiting-match-card losers-bracket"
-                                                    onClick={() => {
-                                                        // Find first available table
-                                                        const occupiedTables = new Set(
-                                                            matches.filter(m => m.table !== null && m.table !== undefined).map(m => m.table as number)
-                                                        );
-                                                        const availableTable = Array.from({ length: tables }, (_, i) => i + 1)
-                                                            .find(tableId => !occupiedTables.has(tableId));
-
-                                                        if (availableTable) {
-                                                            onMoveMatch(match, availableTable);
-                                                        }
-                                                    }}
-                                                    title="Click to assign to first available table"
                                                 >
                                                     <div className="waiting-match-players">
                                                         {getParticipantName(match.opponent1?.id)}
                                                         <span className="waiting-match-vs"> vs </span>
                                                         {getParticipantName(match.opponent2?.id)}
+                                                    </div>
+                                                    <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                        <select
+                                                            value={selectedTableByMatch[match.id] ?? ''}
+                                                            onChange={(e) => setSelectedTable(match.id, e.target.value ? parseInt(e.target.value, 10) : null)}
+                                                            aria-label={`Select table for match ${match.number}`}
+                                                        >
+                                                            <option value="">Pick table...</option>
+                                                            {Array.from({ length: tables }).map((_, ti) => {
+                                                                const tnum = ti + 1;
+                                                                const occupied = matches.some(mm => mm.table === tnum);
+                                                                return (
+                                                                    <option key={tnum} value={tnum} disabled={occupied}>{tnum === 1 ? 'Stream' : `Table ${tnum - 1}`}</option>
+                                                                );
+                                                            })}
+                                                        </select>
+                                                        <button
+                                                            className="table-action-btn assign-specific-btn"
+                                                            onClick={() => {
+                                                                const tid = selectedTableByMatch[match.id];
+                                                                if (tid) onMoveMatch(match, tid);
+                                                            }}
+                                                            disabled={!selectedTableByMatch[match.id]}
+                                                        >
+                                                            Assign
+                                                        </button>
                                                     </div>
                                                     <div className="waiting-match-details">
                                                         Match #{match.number} • {friendlyRound(match)}
@@ -507,24 +554,37 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                 <div
                                                     key={match.id}
                                                     className="waiting-match-card grand-finals"
-                                                    onClick={() => {
-                                                        // Find first available table
-                                                        const occupiedTables = new Set(
-                                                            matches.filter(m => m.table !== null && m.table !== undefined).map(m => m.table as number)
-                                                        );
-                                                        const availableTable = Array.from({ length: tables }, (_, i) => i + 1)
-                                                            .find(tableId => !occupiedTables.has(tableId));
-
-                                                        if (availableTable) {
-                                                            onMoveMatch(match, availableTable);
-                                                        }
-                                                    }}
-                                                    title="Click to assign to first available table"
                                                 >
                                                     <div className="waiting-match-players">
                                                         {getParticipantName(match.opponent1?.id)}
                                                         <span className="waiting-match-vs"> vs </span>
                                                         {getParticipantName(match.opponent2?.id)}
+                                                    </div>
+                                                    <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                        <select
+                                                            value={selectedTableByMatch[match.id] ?? ''}
+                                                            onChange={(e) => setSelectedTable(match.id, e.target.value ? parseInt(e.target.value, 10) : null)}
+                                                            aria-label={`Select table for match ${match.number}`}
+                                                        >
+                                                            <option value="">Pick table...</option>
+                                                            {Array.from({ length: tables }).map((_, ti) => {
+                                                                const tnum = ti + 1;
+                                                                const occupied = matches.some(mm => mm.table === tnum);
+                                                                return (
+                                                                    <option key={tnum} value={tnum} disabled={occupied}>{tnum === 1 ? 'Stream' : `Table ${tnum - 1}`}</option>
+                                                                );
+                                                            })}
+                                                        </select>
+                                                        <button
+                                                            className="table-action-btn assign-specific-btn"
+                                                            onClick={() => {
+                                                                const tid = selectedTableByMatch[match.id];
+                                                                if (tid) onMoveMatch(match, tid);
+                                                            }}
+                                                            disabled={!selectedTableByMatch[match.id]}
+                                                        >
+                                                            Assign
+                                                        </button>
                                                     </div>
                                                     <div className="waiting-match-details">
                                                         Match #{match.number} • {friendlyRound(match)}
@@ -621,7 +681,11 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                     Enter Score
                                                 </button>
                                                 <button
-                                                    onClick={() => onReturnToWaiting(assignedMatch)}
+                                                    onClick={() => {
+                                                        onReturnToWaiting(assignedMatch);
+                                                        // clear any selected table for this match so the dropdown reflects it's waiting
+                                                        setSelectedTable(assignedMatch.id, null);
+                                                    }}
                                                     className="table-action-btn return-match-btn"
                                                 >
                                                     Return to Waiting
