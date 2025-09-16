@@ -11,7 +11,7 @@
   --text-primary: #f8fafc;
   --text-secondary: #cbd5e1;
   --text-muted: #94a3b8;
-  --text-inverse: #1e293b;
+  overflow-x: auto;
 
   /* Accent Colors */
   --accent-primary: #007bff;
@@ -77,7 +77,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  width: 100vw;
+  width: 100%;
   overflow-x: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -399,6 +399,461 @@ input[type="text"]:focus,
   border-width: 2.5px;
 }
 
+/* Wizard modal styling */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary);
+  /* hide underlying app */
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 0;
+  z-index: 9999;
+}
+
+.modal-fullwidth {
+  width: 100%;
+  height: 100vh;
+  max-width: none;
+  max-height: 100vh;
+  background: linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
+  border-radius: 0;
+  padding: calc(var(--spacing-lg));
+  box-shadow: none;
+  border: none;
+  overflow: hidden;
+  /* disable scrolling on the modal itself */
+}
+
+/* Vertical centering for modal on larger screens */
+@media (min-width: 900px) {
+  .modal-overlay {
+    align-items: center;
+    /* center vertically */
+    padding: var(--spacing-lg);
+  }
+}
+
+.tournament-wizard .wizard-steps {
+  display: flex;
+  gap: var(--spacing-sm, 8px);
+  margin-top: 2px;
+  margin-bottom: var(--spacing-sm, 8px);
+}
+
+/* Slightly reduce the top margin on narrow screens */
+@media (max-width: 600px) {
+  .tournament-wizard .wizard-steps {
+    margin-top: 4px;
+  }
+}
+
+.tournament-wizard .wizard-step {
+  padding: 4px 8px;
+  /* tighter pill */
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  text-align: center;
+  position: relative;
+  font-size: 0.95rem;
+}
+
+.tournament-wizard .wizard-step.active {
+  background: linear-gradient(90deg, var(--accent-secondary), var(--accent-primary));
+  color: var(--text-inverse);
+  font-weight: 600;
+}
+
+/* Numbered pills for steps */
+.tournament-wizard .wizard-step::before {
+  content: counter(step-counter);
+  counter-increment: step-counter;
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-weight: 700;
+  margin-right: 6px;
+  font-size: 0.85rem;
+}
+
+.tournament-wizard .wizard-steps {
+  counter-reset: step-counter;
+}
+
+.tournament-wizard .wizard-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 6px;
+  background: transparent;
+  max-width: 1000px;
+  margin: 0 auto;
+  /* allow JS to control exact panel height via inline styles */
+  height: auto;
+  overflow: hidden;
+  gap: 4px;
+}
+
+/* When the wizard is active, prevent body/page-level scrolling and horizontal overflow */
+html.tournament-wizard-active,
+body.tournament-wizard-active,
+#root.tournament-wizard-active {
+  overflow: hidden !important;
+  height: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Hide heavy/large content (brackets) while overlay wizard is active to avoid page scroll */
+body.tournament-wizard-active .bracket-container,
+body.tournament-wizard-active .double-bracket-container,
+body.tournament-wizard-active .bracket-grid {
+  display: none !important;
+}
+
+/* Remove bottom spacing on common top-level containers while wizard active */
+body.tournament-wizard-active .container,
+body.tournament-wizard-active .main,
+body.tournament-wizard-active .app-shell {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* Ensure the wizard wrapper never causes horizontal overflow */
+.tournament-wizard,
+.tournament-wizard .wizard-inline-panel,
+.tournament-wizard .modal-fullwidth {
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.tournament-wizard .wizard-panel-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* allow children to shrink for proper layout */
+  padding: 0 6px;
+  /* reduce vertical padding to pull content upward */
+}
+
+/* Panel body area that can scroll internally while the overall wizard fits the viewport */
+.tournament-wizard .wizard-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* allow the active step's body to scroll when space is constrained */
+  overflow: auto;
+}
+
+.tournament-wizard .details-panel {
+  /* Remove vertical centering: align items to the top to reduce large gap
+     between the tournament name/title and the step body. Keep inputs
+     compact so the wizard fits tighter in small viewports. */
+  align-items: stretch;
+  justify-content: flex-start;
+  /* push content to the top */
+  max-height: none;
+  overflow: visible;
+  gap: 6px;
+  padding-top: 4px;
+  /* small top padding to keep label spacing tidy */
+}
+
+.tournament-wizard .details-panel input,
+.tournament-wizard .details-panel textarea,
+.tournament-wizard .details-panel select {
+  max-width: 100%;
+}
+
+.tournament-wizard .wizard-actions {
+  /* ensure actions stay visually separate and pinned below scrollable content */
+  margin-top: var(--spacing-sm, 8px);
+  align-self: flex-end;
+  z-index: 2;
+}
+
+/* Header area with right-aligned main action */
+.tournament-wizard .wizard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 4px 0;
+}
+
+.tournament-wizard .wizard-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tournament-wizard .wizard-header-actions {
+  margin-left: auto;
+}
+
+/* Make header responsive: on small widths stack steps above the action button */
+@media (max-width: 520px) {
+  .tournament-wizard .wizard-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .tournament-wizard .wizard-header-actions {
+    margin-left: 0;
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+/* Hide the primary action inside panel footer: header contains the main Next/Start instead */
+.tournament-wizard .wizard-panel .wizard-actions .primary {
+  display: none;
+}
+
+/* Compact mode to force the entire wizard to fit without scrolling */
+.tournament-wizard.compact-wizard {
+  font-size: 0.95rem;
+}
+
+/* When JS signals compact-mode (very small available height), further compress spacing */
+.tournament-wizard.compact-mode {
+  /* slightly less aggressive to avoid clipping content */
+  font-size: 0.94rem;
+}
+
+.tournament-wizard.compact-mode .wizard-panel-inner {
+  padding: 6px;
+}
+
+.tournament-wizard.compact-mode .wizard-actions {
+  margin-top: 8px;
+}
+
+.tournament-wizard.compact-mode input,
+.tournament-wizard.compact-mode textarea,
+.tournament-wizard.compact-mode select {
+  padding: 6px;
+}
+
+.tournament-wizard.compact-mode .players-list,
+.tournament-wizard.compact-mode .players-list-review {
+  gap: 4px;
+}
+
+.tournament-wizard.compact-wizard .wizard-step {
+  padding: 6px 10px;
+  min-width: 70px;
+}
+
+.tournament-wizard.compact-wizard .wizard-panel {
+  padding: 6px;
+}
+
+.tournament-wizard.compact-wizard label {
+  margin-bottom: 4px;
+  font-size: 0.92rem;
+}
+
+.tournament-wizard.compact-wizard input,
+.tournament-wizard.compact-wizard textarea,
+.tournament-wizard.compact-wizard select {
+  padding: 6px;
+}
+
+.tournament-wizard.compact-wizard .manual-add-panel input {
+  padding: 6px;
+}
+
+/* Ensure race input widths are consistent */
+.race-input {
+  width: 100%;
+  max-width: 120px;
+  box-sizing: border-box;
+}
+
+.tournament-wizard.compact-wizard .race-input {
+  max-width: 100px;
+}
+
+/* Responsive pair layout for the race inputs */
+.race-pair {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.race-pair .race-col {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+
+.race-pair .race-col label {
+  margin-bottom: 4px;
+}
+
+/* Wizard toast (non-blocking) */
+.wizard-toast {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  background: rgba(20, 20, 20, 0.9);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-lg);
+  z-index: 2001;
+  max-width: 320px;
+  font-size: 0.92rem;
+}
+
+.wizard-toast.error {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.95), rgba(220, 38, 38, 0.95));
+  color: var(--text-inverse);
+}
+
+.wizard-toast.info {
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.95), rgba(59, 130, 246, 0.95));
+  color: var(--text-inverse);
+}
+
+/* Wizard form controls - make inputs and textarea match select styling */
+.tournament-wizard label {
+  display: block;
+  margin-bottom: 6px;
+  /* slightly smaller gap than global spacing */
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.tournament-wizard input[type="text"],
+.tournament-wizard input[type="number"],
+.tournament-wizard textarea,
+.tournament-wizard select,
+.manual-add-panel input {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 8px 10px;
+  /* reduce vertical padding */
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: border-color var(--transition-fast);
+  width: 100%;
+  max-width: 720px;
+  box-sizing: border-box;
+}
+
+.tournament-wizard textarea {
+  min-height: 64px;
+  /* slightly smaller textarea to save vertical space */
+  resize: vertical;
+}
+
+.tournament-wizard input[type="text"]:focus,
+.tournament-wizard input[type="number"]:focus,
+.tournament-wizard textarea:focus,
+.tournament-wizard select:focus,
+.manual-add-panel input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.06);
+}
+
+/* Manual add panel spacing */
+.manual-add-panel {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  margin-top: var(--spacing-md);
+}
+
+.manual-add-panel input {
+  flex: 1;
+  max-width: 320px;
+}
+
+.manual-add-panel button {
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+/* Compact players list to avoid excessive height and scrolling */
+.tournament-wizard .players-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.tournament-wizard .player-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.tournament-wizard .player-meta {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.players-list-review {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.tournament-wizard .player-phone {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+/* Make wizard panels spaced and readable */
+.tournament-wizard .wizard-panel>label+*,
+.tournament-wizard .wizard-panel>div+label {
+  margin-top: var(--spacing-xs);
+}
+
+.tournament-wizard .wizard-panel>* {
+  margin-bottom: var(--spacing-md);
+}
+
+.wizard-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+/* Header metadata display */
+.header-meta {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
 .bracket-round:nth-child(3) .match-card {
   /* Quarterfinals or higher - more emphasis */
   border-width: 3px;
@@ -498,9 +953,8 @@ input[type="text"]:focus,
 /* Score Modal Styles */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
+  inset: 0;
+  /* cover full viewport without forcing 100vw which can cause overflow */
   height: 100vh;
   background: var(--bg-overlay);
   display: flex;
@@ -565,16 +1019,6 @@ input[type="text"]:focus,
 @keyframes fade-in {
   from {
     opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slide-up {
-  from {
-    opacity: 0;
     transform: translateY(20px);
   }
 
@@ -582,6 +1026,19 @@ input[type="text"]:focus,
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Scoped heading sizes inside the wizard */
+.tournament-wizard h3 {
+  font-size: 1.05rem;
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.tournament-wizard h4 {
+  font-size: 0.95rem;
+  margin-top: 6px;
+  margin-bottom: 6px;
 }
 
 /* Responsive Design */
@@ -814,6 +1271,80 @@ input:focus-visible {
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+/* Player row styles used in the Tournament Setup Wizard */
+.player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: transparent;
+}
+
+.player-row .player-name {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.player-row .player-phone {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-left: 8px;
+}
+
+.player-row .player-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.players-list .player-row+.player-row {
+  margin-top: 6px;
+}
+
+.players-list .player-row button {
+  margin-left: 6px;
+}
+
+/* Make the players list scrollable inside the wizard when it grows large */
+.tournament-wizard .players-list {
+  /* allow the players list to expand to available vertical space inside the panel */
+  flex: 1 1 auto;
+  min-height: 160px;
+  max-height: none;
+  overflow-y: auto;
+  padding-right: 8px;
+  /* avoid content behind scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-medium) transparent;
+}
+
+/* Review list inside step 3: give extra vertical room and scrolling */
+.players-list-review {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.tournament-wizard .players-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.tournament-wizard .players-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tournament-wizard .players-list::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 8px;
+}
+
+.tournament-wizard .players-list::-webkit-scrollbar-thumb:hover {
+  background: var(--border-dark);
 }
 
 .setup-section {
@@ -1363,8 +1894,8 @@ input:focus-visible {
 
 /* Popout-specific helpers */
 .popout-viewport {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -1865,12 +2396,14 @@ input:focus-visible {
 }
 
 .waiting-matches-horizontal {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  display: flex;
+  flex-direction: row;
   gap: var(--spacing-md);
-  max-height: 200px;
-  overflow-y: auto;
+  /* allow horizontal scrolling for long lists */
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: var(--spacing-sm) 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tables-main-section {
@@ -2283,4 +2816,72 @@ input:focus-visible {
     padding: var(--spacing-md);
     min-height: 400px;
   }
+}
+
+/* Dropdown (select) styling - match inputs */
+select,
+select:focus {
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: border-color var(--transition-fast);
+  outline: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.08);
+}
+
+/* Make form controls use consistent sizing */
+.form-control {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Force theme for any remaining text inputs / textareas / selects that might appear white
+   This uses higher specificity and !important to override inline or third-party defaults. */
+input,
+input[type="text"],
+input[type="number"],
+textarea,
+select,
+.text-input,
+.score-input,
+.table-name-input {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-medium) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: var(--spacing-sm) !important;
+}
+
+/* Inputs inside modals and panels should be full width by default */
+.modal-fullwidth input,
+.modal-fullwidth textarea,
+.modal-fullwidth select {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* Themed custom arrow for select (SVG data URI) */
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23D1D5DB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  padding-right: 36px;
+  /* space for arrow */
+}
+
+/* Slightly darker arrow on focus */
+select:focus {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23007BFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
 }

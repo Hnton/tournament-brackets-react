@@ -204,6 +204,23 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [waitingMatches]);
 
+    // Clear any selectedTable if the table becomes occupied by another match
+    useEffect(() => {
+        const occupiedTables = new Set(matches.filter(mm => mm.table != null).map(mm => mm.table as number));
+        const next = { ...selectedTableByMatch };
+        let changed = false;
+        Object.keys(next).forEach(k => {
+            const mid = parseInt(k, 10);
+            const tid = next[mid];
+            if (tid != null && occupiedTables.has(tid)) {
+                next[mid] = null;
+                changed = true;
+            }
+        });
+        if (changed) setSelectedTableByMatch(next);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [matches]);
+
     // Use shared utility for friendly round labels
     const friendlyRound = (m: Match) => getUserFriendlyRoundNumber(m, allMatches);
 
@@ -378,6 +395,14 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
 
     // Manual assign function with proper double elimination priority
     const handleAssignNext = (tableId: number) => {
+        // Re-check occupancy before assigning
+        const occupied = matches.some(mm => mm.table === tableId);
+        if (occupied) {
+            // Best-effort: notify via console and do nothing. UI buttons are disabled where appropriate.
+            console.warn(`Table ${tableId} is occupied; cannot assign next.`);
+            return;
+        }
+
         const nextMatch = getOptimalMatch(waitingMatches);
         if (nextMatch) {
             console.log(`Assigning match #${nextMatch.number} (${friendlyRound(nextMatch)}) to table ${tableId}`);
@@ -441,30 +466,49 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                                                         {getParticipantName(match.opponent2?.id)}
                                                     </div>
                                                     <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-                                                        <select
-                                                            value={selectedTableByMatch[match.id] ?? ''}
-                                                            onChange={(e) => setSelectedTable(match.id, e.target.value ? parseInt(e.target.value, 10) : null)}
-                                                            aria-label={`Select table for match ${match.number}`}
-                                                        >
-                                                            <option value="">Pick table...</option>
-                                                            {Array.from({ length: tables }).map((_, ti) => {
-                                                                const tnum = ti + 1;
-                                                                const occupied = matches.some(mm => mm.table === tnum);
-                                                                return (
-                                                                    <option key={tnum} value={tnum} disabled={occupied}>{tnum === 1 ? 'Stream' : `Table ${tnum - 1}`}</option>
-                                                                );
-                                                            })}
-                                                        </select>
-                                                        <button
-                                                            className="table-action-btn assign-specific-btn"
-                                                            onClick={() => {
-                                                                const tid = selectedTableByMatch[match.id];
-                                                                if (tid) onMoveMatch(match, tid);
-                                                            }}
-                                                            disabled={!selectedTableByMatch[match.id]}
-                                                        >
-                                                            Assign
-                                                        </button>
+                                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                            <select
+                                                                value={selectedTableByMatch[match.id] ?? ''}
+                                                                onChange={(e) => setSelectedTable(match.id, e.target.value ? parseInt(e.target.value, 10) : null)}
+                                                                aria-label={`Select table for match ${match.number}`}
+                                                            >
+                                                                <option value="">Pick table...</option>
+                                                                {Array.from({ length: tables }).map((_, ti) => {
+                                                                    const tnum = ti + 1;
+                                                                    const occupied = matches.some(mm => mm.table === tnum);
+                                                                    return (
+                                                                        <option key={tnum} value={tnum} disabled={occupied}>{tnum === 1 ? 'Stream' : `Table ${tnum - 1}`}</option>
+                                                                    );
+                                                                })}
+                                                            </select>
+                                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                <button
+                                                                    className="table-action-btn assign-specific-btn"
+                                                                    onClick={() => {
+                                                                        const tid = selectedTableByMatch[match.id];
+                                                                        if (!tid) return;
+                                                                        const occupied = matches.some(mm => mm.table === tid);
+                                                                        if (occupied) {
+                                                                            // If occupied, clear selection and don't assign
+                                                                            setSelectedTable(match.id, null);
+                                                                            console.warn(`Table ${tid} became occupied; assignment cancelled.`);
+                                                                            return;
+                                                                        }
+                                                                        onMoveMatch(match, tid);
+                                                                    }}
+                                                                    disabled={!selectedTableByMatch[match.id]}
+                                                                >
+                                                                    Assign
+                                                                </button>
+                                                                {selectedTableByMatch[match.id] != null && (
+                                                                    matches.some(mm => mm.table === selectedTableByMatch[match.id]) ? (
+                                                                        <div style={{ color: 'var(--accent-error)', fontSize: 'var(--font-size-xs)', marginTop: 4 }}>
+                                                                            Table occupied — selection cleared
+                                                                        </div>
+                                                                    ) : null
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                     <div className="waiting-match-details">
                                                         Match #{match.number} • {friendlyRound(match)}

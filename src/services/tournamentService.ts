@@ -18,7 +18,14 @@ class TournamentService {
     async createTournament(
         players: Player[],
         bracketType: 'single_elimination' | 'double_elimination' = 'double_elimination',
-        tournamentName?: string
+        tournamentName?: string,
+        options?: {
+            description?: string;
+            gameType?: string;
+            trueDouble?: boolean;
+            raceWinners?: number;
+            raceLosers?: number;
+        }
     ): Promise<BracketsData> {
         try {
             console.log('Creating tournament with players:', players);
@@ -44,15 +51,25 @@ class TournamentService {
             // Create the tournament stage
             console.log('Creating stage...');
             const stageName = tournamentName ? `${tournamentName}` : 'Main Stage';
+            const stageSettings: any = {
+                grandFinal: bracketType === 'double_elimination' ? 'double' : 'none',
+                balanceByes: true,
+            };
+
+            if (options) {
+                if (options.trueDouble !== undefined) stageSettings.trueDouble = !!options.trueDouble;
+                if (options.gameType) stageSettings.gameType = options.gameType;
+                if (options.description) stageSettings.description = options.description;
+                if (options.raceWinners) stageSettings.raceWinners = options.raceWinners;
+                if (options.raceLosers) stageSettings.raceLosers = options.raceLosers;
+            }
+
             await this.manager.create.stage({
                 tournamentId: this.currentTournamentId,
                 name: stageName,
                 type: bracketType,
                 seeding: paddedParticipants,
-                settings: {
-                    grandFinal: bracketType === 'double_elimination' ? 'double' : 'none',
-                    balanceByes: true,
-                }
+                settings: stageSettings
             });
             console.log('Stage created successfully');
 

@@ -8,6 +8,7 @@ import BracketsViewer from './components/BracketsViewer';
 import BracketsPopout from './components/BracketsPopout';
 import TableAssignmentNew from './components/TableAssignmentNew';
 import { BracketScoreModal, useBracketScoreModal } from './components/BracketScoreModal';
+import TournamentSetupWizard from './components/TournamentSetupWizard';
 import {
     Player,
     Match,
@@ -50,9 +51,27 @@ const App = () => {
     });
     const [bracketType, setBracketType] = useState<BracketType>('double');
     const [tournamentName, setTournamentName] = useState<string>('');
+    const [tournamentDescription, setTournamentDescription] = useState<string>('');
+    const [gameType, setGameType] = useState<string>('Nine Ball');
+    const [raceWinners, setRaceWinners] = useState<number>(7);
+    const [raceLosers, setRaceLosers] = useState<number>(5);
+    const [trueDouble, setTrueDouble] = useState<boolean>(true);
 
     // Modal state
     const bracketScoreModal = useBracketScoreModal();
+
+    // Prevent document-level scrolling while on the initial setup screen
+    useEffect(() => {
+        const prev = document.body.style.overflow;
+        if (!tournamentStarted) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = prev || '';
+        }
+        return () => {
+            document.body.style.overflow = prev || '';
+        };
+    }, [tournamentStarted]);
 
     // Initialize table assignments array based on table count
     useEffect(() => {
@@ -123,23 +142,43 @@ const App = () => {
         setPlayers(updatedPlayers);
     };
 
-    // Start tournament
-    const startTournament = async () => {
-        if (players.length === 0) {
+    // Start tournament - accepts optional config so callers (wizard) can pass values directly
+    type StartConfig = Partial<{
+        players: Player[];
+        bracketType: BracketType;
+        tournamentName: string;
+        description: string;
+        gameType: string;
+        trueDouble: boolean;
+        raceWinners: number;
+        raceLosers: number;
+    }> | undefined;
+
+    const startTournament = async (config?: StartConfig) => {
+        const usePlayers = config?.players ?? players;
+        const useBracketType = config?.bracketType ?? bracketType;
+        const useTournamentName = config?.tournamentName ?? tournamentName;
+        const useDescription = config?.description ?? tournamentDescription;
+        const useGameType = config?.gameType ?? gameType;
+        const useTrueDouble = config?.trueDouble ?? trueDouble;
+        const useRaceWinners = config?.raceWinners ?? raceWinners;
+        const useRaceLosers = config?.raceLosers ?? raceLosers;
+
+        if (!usePlayers || usePlayers.length === 0) {
             alert('Please add some players first.');
             return;
         }
 
-        if (players.length < 2) {
+        if (usePlayers.length < 2) {
             alert('At least 2 players are required to start a tournament.');
             return;
         }
 
         try {
-            console.log('Starting tournament with players:', players);
+            console.log('Starting tournament with players:', usePlayers);
 
             // Randomize players before starting tournament
-            const shuffledPlayers = shuffleArray(players);
+            const shuffledPlayers = shuffleArray(usePlayers);
             console.log('Players after shuffling:', shuffledPlayers);
 
             // Create tournament based on bracket type
@@ -150,9 +189,25 @@ const App = () => {
 
             const data = await tournamentService.createTournament(
                 shuffledPlayers,
-                bracketTypeMap[bracketType],
-                tournamentName
+                bracketTypeMap[useBracketType],
+                useTournamentName,
+                {
+                    description: useDescription,
+                    gameType: useGameType,
+                    trueDouble: useTrueDouble,
+                    raceWinners: useRaceWinners,
+                    raceLosers: useRaceLosers
+                }
             );
+
+            // Persist selected metadata in renderer state for UI
+            setTournamentName(useTournamentName || '');
+            setTournamentDescription(useDescription || '');
+            setGameType(useGameType || 'Nine Ball');
+            setBracketType(useBracketType || 'double');
+            setTrueDouble(Boolean(useTrueDouble));
+            setRaceWinners(useRaceWinners || 7);
+            setRaceLosers(useRaceLosers || 5);
 
             setBracketsData(data);
             setTournamentStarted(true);
@@ -440,58 +495,23 @@ const App = () => {
                         {tournamentStarted && bracketsData && (
                             <p className="header-subtitle">
                                 {bracketsData.participant?.length || 0} participants • {bracketsData.match?.length || 0} matches
+                                {(() => {
+                                    const stageSettings = bracketsData.stage && bracketsData.stage[0] && (bracketsData.stage[0].settings as any);
+                                    const gt = stageSettings?.gameType || gameType;
+                                    const rw = stageSettings?.raceWinners || raceWinners;
+                                    const rl = stageSettings?.raceLosers || raceLosers;
+                                    return (
+                                        <span style={{ display: 'block', marginTop: 4, fontSize: '0.9em', color: 'var(--text-secondary)' }}>
+                                            {gt} • Race W: {rw} • Race L: {rl}
+                                        </span>
+                                    );
+                                })()}
                             </p>
                         )}
                     </div>
 
                     <div className="header-controls">
-                        {/* tournament setup controls appear here when not started */}
-                        {!tournamentStarted && (
-                            <div className="tournament-setup-controls">
-                                <div className="tournament-name-input">
-                                    <label htmlFor="tournament-name">Tournament Name</label>
-                                    <input
-                                        id="tournament-name"
-                                        type="text"
-                                        value={tournamentName}
-                                        onChange={(e) => setTournamentName(e.target.value)}
-                                        placeholder="Enter tournament name..."
-                                        className="text-input"
-                                    />
-                                </div>
-
-                                <div className="bracket-type-selector">
-                                    <label htmlFor="bracket-type">Tournament Type</label>
-                                    <select
-                                        id="bracket-type"
-                                        value={bracketType}
-                                        onChange={(e) => setBracketType(e.target.value as BracketType)}
-                                        className="select-input"
-                                    >
-                                        <option value="single">Single Elimination</option>
-                                        <option value="double">Double Elimination</option>
-                                    </select>
-                                </div>
-
-                                <div className="action-buttons">
-                                    <button onClick={generateDemo} className="secondary-btn">
-                                        <span className="btn-icon">🎲</span>
-                                        Generate Demo
-                                    </button>
-                                    <button
-                                        onClick={startTournament}
-                                        className="primary-btn"
-                                        disabled={players.length < 2}
-                                    >
-                                        <span className="btn-icon">🚀</span>
-                                        Start Tournament
-                                        {players.length < 2 && (
-                                            <span className="btn-note">(Need 2+ players)</span>
-                                        )}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                        {/* header controls left intentionally minimal when not started; wizard is embedded in setup flow below */}
                     </div>
 
                     {/* Popout button positioned absolutely in header */}
@@ -542,24 +562,34 @@ const App = () => {
                 <div className="setup-container">
                     <div className="setup-header">
                         <h2>Setup Your Tournament</h2>
-                        <p>Upload a CSV file or add players manually to get started</p>
+                        <p>Configure tournament details, import or add players, then review & start</p>
                     </div>
 
                     <div className="setup-content">
-                        <div className="upload-section">
-                            <PlayerUpload onPlayersParsed={handleCSVUpload} />
-                        </div>
-
-                        <div className="divider">
-                            <span>or</span>
-                        </div>
-
-                        <div className="players-section">
-                            <PlayerList
-                                players={players}
-                                onPlayersChange={handlePlayersChange}
-                            />
-                        </div>
+                        <TournamentSetupWizard
+                            inline
+                            initialName={tournamentName}
+                            initialBracketType={bracketType}
+                            initialDescription={tournamentDescription}
+                            initialGameType={gameType}
+                            initialTrueDouble={trueDouble}
+                            initialRaceWinners={raceWinners}
+                            initialRaceLosers={raceLosers}
+                            onStart={(config) => {
+                                startTournament({
+                                    players: config.players,
+                                    bracketType: config.bracketType,
+                                    tournamentName: config.name || undefined,
+                                    description: config.description || undefined,
+                                    gameType: config.gameType || undefined,
+                                    trueDouble: config.trueDouble !== undefined ? Boolean(config.trueDouble) : undefined,
+                                    raceWinners: config.raceWinners !== undefined ? config.raceWinners : undefined,
+                                    raceLosers: config.raceLosers !== undefined ? config.raceLosers : undefined
+                                } as StartConfig);
+                            }}
+                            onPlayersChange={(p: Player[]) => setPlayers(p)}
+                            players={players}
+                        />
                     </div>
                 </div>
             ) : (
