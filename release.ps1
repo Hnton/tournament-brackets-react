@@ -61,19 +61,36 @@ Write-Host "-> Check progress at: https://github.com/Hnton/tournament-brackets-r
 try {
     if (Get-Command gh -ErrorAction SilentlyContinue) {
         Write-Host "📣 Creating GitHub release via gh CLI..." -ForegroundColor Green
-        # Use --notes and explicit assets; PowerShell can expand globs unexpectedly, so pass assets via --asset repeatedly if needed.
         try {
-            # If there are files in out/, attach them; otherwise create release without assets
+            # Resolve repo in OWNER/REPO format: prefer env var, fall back to git remote parsing
+            $repo = $env:GITHUB_REPOSITORY
+            if (-not $repo -or $repo -eq '') {
+                $remoteUrl = (git config --get remote.origin.url) -as [string]
+                if ($remoteUrl) {
+                    # handle git@github.com:owner/repo.git and https://github.com/owner/repo.git
+                    if ($remoteUrl -match 'git@[^:]+:(.+)') {
+                        $repo = $Matches[1]
+                    }
+                    elseif ($remoteUrl -match 'https?://[^/]+/(.+)') {
+                        $repo = $Matches[1]
+                    }
+                    # strip .git suffix
+                    if ($repo -and $repo.EndsWith('.git')) { $repo = $repo.Substring(0, $repo.Length - 4) }
+                }
+            }
+
+            # Collect assets safely
             $assets = Get-ChildItem -Path .\out -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
-            if ($assets -and $assets.Count -gt 0) {
-                gh release create $newVersion --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY @($assets)
-            }
-            else {
-                gh release create $newVersion --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY
-            }
+
+            # Build gh args: tag first, then flags, then assets (assets last)
+            $ghArgs = @($newVersion, '--title', $newVersion, '--notes', "Release $newVersion")
+            if ($repo) { $ghArgs += @('-R', $repo) }
+            if ($assets -and $assets.Count -gt 0) { $ghArgs += $assets }
+
+            & gh release create @ghArgs
         }
         catch {
-            Write-Host "⚠️ gh release failed or no artifacts found; continuing." -ForegroundColor Yellow
+            Write-Host "⚠️ gh release failed or no artifacts found; continuing. Error: $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
     else {
