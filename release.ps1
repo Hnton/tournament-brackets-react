@@ -32,9 +32,13 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Update version
+# Update version (use npm to update package.json but avoid capturing noisy stdout)
 Write-Host "📝 Updating version..." -ForegroundColor Yellow
-$newVersion = npm version $ReleaseType --no-git-tag-version
+npm version $ReleaseType --no-git-tag-version --allow-same-version | Out-Null
+
+# Read the new version string from package.json directly
+$pkg = Get-Content -Raw -Path package.json | ConvertFrom-Json
+$newVersion = $pkg.version
 Write-Host "New version: $newVersion" -ForegroundColor Green
 
 # Update package-lock.json
@@ -44,10 +48,10 @@ npm install --package-lock-only
 git add package.json package-lock.json
 git commit -m "chore: bump version to $newVersion"
 
-# Create and push tag
+# Create and push tag (use explicit refspecs)
 git tag $newVersion
-git push origin master
-git push origin $newVersion
+git push origin HEAD
+git push origin --tags
 
 Write-Host "✅ Release $newVersion created successfully!" -ForegroundColor Green
 Write-Host "📦 GitHub Actions will now build and publish the release automatically" -ForegroundColor Blue
@@ -57,7 +61,20 @@ Write-Host "-> Check progress at: https://github.com/Hnton/tournament-brackets-r
 try {
     if (Get-Command gh -ErrorAction SilentlyContinue) {
         Write-Host "📣 Creating GitHub release via gh CLI..." -ForegroundColor Green
-        gh release create $newVersion out/* --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY -q
+        # Use --notes and explicit assets; PowerShell can expand globs unexpectedly, so pass assets via --asset repeatedly if needed.
+        try {
+            # If there are files in out/, attach them; otherwise create release without assets
+            $assets = Get-ChildItem -Path .\out -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+            if ($assets -and $assets.Count -gt 0) {
+                gh release create $newVersion --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY @($assets) -q
+            }
+            else {
+                gh release create $newVersion --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY -q
+            }
+        }
+        catch {
+            Write-Host "⚠️ gh release failed or no artifacts found; continuing." -ForegroundColor Yellow
+        }
     }
     else {
         Write-Host "ℹ️ gh CLI not found — release will be created by CI workflow when it finishes building artifacts." -ForegroundColor Yellow
