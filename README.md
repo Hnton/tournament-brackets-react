@@ -251,6 +251,46 @@ This project uses **GitHub Actions** for automated builds and releases:
 
 3. **Users can then download** from the [Releases page](https://github.com/Hnton/tournament-brackets-react/releases)
 
+### Releasing (CI and local)
+
+This repository supports automated releases triggered by tags and also includes local helper scripts.
+
+- CI-driven (recommended): push a tag like `v3.0.0` and the `release` workflow will build platform artifacts and publish a GitHub Release with the generated files.
+
+- Local helper scripts:
+   - Unix/macOS: `./release.sh [patch|minor|major]`
+   - PowerShell: `.\release.ps1 [patch|minor|major]`
+   - These scripts run tests, bump the package version, commit, tag, and push. If the GitHub CLI (`gh`) is available they will attempt to create a GitHub release immediately using local artifacts.
+
+Notes:
+
+- The CI workflow collects artifacts under `out/**` from each runner — adjust `.github/workflows/release.yml` if your makers produce artifacts in a different location.
+- The release workflow uses the repository's `GITHUB_TOKEN` to create the release. For publishing to other distribution mechanisms, extend the workflow with appropriate steps and secrets.
+
+#### Example release command
+
+Run this to create a minor release locally and let CI publish artifacts:
+
+```bash
+# Bump version, commit, tag and push
+./release.sh minor
+```
+
+Or manually create and push a tag to trigger CI:
+
+```bash
+git tag v3.0.1
+git push origin v3.0.1
+```
+
+#### Quick release checklist
+
+- [ ] Ensure working directory is clean and all tests pass (`npm test`).
+- [ ] Update `CHANGELOG.md` with notable changes for the release.
+- [ ] Run `./release.sh patch|minor|major` (or `npm version <>` + push the tag) or push a tag directly.
+- [ ] Confirm GitHub Actions runs and creates the release with attached artifacts.
+
+
 ### Manual Release
 
 ```bash

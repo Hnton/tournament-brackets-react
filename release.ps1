@@ -2,7 +2,7 @@
 # Usage: .\release.ps1 [patch|minor|major]
 
 param(
-    [Parameter(Position=0)]
+    [Parameter(Position = 0)]
     [ValidateSet("patch", "minor", "major")]
     [string]$ReleaseType = "patch"
 )
@@ -52,3 +52,17 @@ git push origin $newVersion
 Write-Host "✅ Release $newVersion created successfully!" -ForegroundColor Green
 Write-Host "📦 GitHub Actions will now build and publish the release automatically" -ForegroundColor Blue
 Write-Host "-> Check progress at: https://github.com/Hnton/tournament-brackets-react/actions" -ForegroundColor Blue
+
+# If gh CLI is present, try to create a release from local artifacts (non-fatal)
+try {
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        Write-Host "📣 Creating GitHub release via gh CLI..." -ForegroundColor Green
+        gh release create $newVersion out/* --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY -q
+    }
+    else {
+        Write-Host "ℹ️ gh CLI not found — release will be created by CI workflow when it finishes building artifacts." -ForegroundColor Yellow
+    }
+}
+catch {
+    Write-Host "⚠️ gh release failed or no artifacts found; continuing." -ForegroundColor Yellow
+}
