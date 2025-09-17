@@ -17,10 +17,26 @@ export const PlayerUpload: React.FC<PlayerUploadProps> = ({ onPlayersParsed }) =
             const text = event.target?.result as string;
             const lines = text.split(/\r?\n/).filter(Boolean);
             const players: Player[] = lines.map(line => {
-                const [nameRaw, phoneRaw] = line.split(',');
-                const name = (nameRaw || '').trim();
-                const phone = (phoneRaw || '').trim();
-                return { name, phone };
+                // Support CSV formats with these columns (in order):
+                // name, phone, email, membershipId, city, state, effectiveRating, robustness
+                // email/membershipId/city/state/effectiveRating/robustness are optional
+                const parts = line.split(',').map(p => p.trim());
+                const name = parts[0] || '';
+                const phone = parts[1] || '';
+                const email = parts[2] || undefined;
+                const membershipId = parts[3] || undefined;
+                const city = parts[4] || undefined;
+                const state = parts[5] || undefined;
+                const effectiveRating = parts[6] !== undefined && parts[6] !== '' ? Number(parts[6]) : undefined;
+                const robustness = parts[7] !== undefined && parts[7] !== '' ? Number(parts[7]) : undefined;
+                const player: any = { name, phone };
+                if (email) player.email = email;
+                if (membershipId) player.membershipId = membershipId;
+                if (city) player.city = city;
+                if (state) player.state = state;
+                if (effectiveRating !== undefined && !Number.isNaN(effectiveRating)) player.effectiveRating = effectiveRating;
+                if (robustness !== undefined && !Number.isNaN(robustness)) player.robustness = robustness;
+                return player as Player;
             });
             onPlayersParsed(players);
         };
@@ -36,7 +52,7 @@ export const PlayerUpload: React.FC<PlayerUploadProps> = ({ onPlayersParsed }) =
                 onChange={handleFileChange}
                 style={{ display: 'block', marginBottom: '1em' }}
             />
-            <small>CSV format: name,phone</small>
+            <small>CSV format: name,phone,email,membershipId,city,state,effectiveRating,robustness</small>
         </div>
     );
 };

@@ -4,6 +4,12 @@ export interface Participant {
     tournament_id: number;
     name: string;
     phone?: string; // Custom field we'll maintain
+    // Optional metadata we populate from Fargo suggestions
+    membershipId?: string;
+    effectiveRating?: number;
+    robustness?: number;
+    city?: string;
+    state?: string;
 }
 
 export interface Match {
@@ -66,6 +72,13 @@ export interface Group {
 export interface Player {
     name: string;
     phone: string;
+    email?: string;
+    // Optional metadata from Fargo suggestions
+    effectiveRating?: number;
+    robustness?: number;
+    city?: string;
+    state?: string;
+    membershipId?: string;
 }
 
 export interface TableSettings {

@@ -28,4 +28,9 @@ module.exports = [
       },
     ],
   },
+  // Asset handling for images/fonts
+  {
+    test: /\.(png|jpe?g|gif|svg)$/i,
+    type: 'asset/resource',
+  },
 ];

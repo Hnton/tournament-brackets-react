@@ -7,6 +7,13 @@ export interface BracketScoreModalProps {
     participants: Participant[];
     onClose: () => void;
     onMatchUpdate: (matchId: number, opponent1Score: number, opponent2Score: number) => Promise<void>;
+    // Race limits: maximum racks for winners/losers bracket (UI enforces max)
+    raceWinners?: number;
+    raceLosers?: number;
+    // whether this stage uses true double elimination
+    trueDouble?: boolean;
+    // indicates this match is the grand-final reset (GF round 2)
+    isGFReset?: boolean;
 }
 
 /**
@@ -16,7 +23,11 @@ export const BracketScoreModal: React.FC<BracketScoreModalProps> = ({
     match,
     participants,
     onMatchUpdate,
-    onClose
+    onClose,
+    raceWinners,
+    raceLosers,
+    trueDouble,
+    isGFReset
 }) => {
     // Get participant names
     const participant1 = participants.find(p => p.id === match.opponent1?.id);
@@ -34,6 +45,25 @@ export const BracketScoreModal: React.FC<BracketScoreModalProps> = ({
     const isByeMatch = !participant1?.name || !participant2?.name ||
         participant1?.name === null || participant2?.name === null;
 
+    // compute max allowed score from provided props (renderer passes raceWinners/raceLosers)
+    // If this match is on the losers side (group_id === 2) use raceLosers; otherwise use raceWinners.
+    // Additionally, treat Grand Final round 2 (reset match) as a losers-side match so it uses raceLosers.
+    const rawGroupId = match.group_id ?? (match as any).groupId;
+    const rawRoundId = match.round_id ?? (match as any).roundId;
+    const isGrandFinal = rawGroupId !== undefined && rawGroupId >= 3;
+    // Prefer explicit isGFReset flag when provided by renderer; otherwise fall back to the
+    // legacy heuristic of treating GF round 2 as a reset (losers-side).
+    const isLosersMatch = (rawGroupId === 2) || Boolean(isGFReset) || (isGrandFinal && rawRoundId === 2);
+    const winnersMax = propsToNumber(raceWinners);
+    const losersMax = propsToNumber(raceLosers) || winnersMax; // fallback to winnersMax if not provided
+    const maxAllowedScore = isLosersMatch ? losersMax : winnersMax;
+
+    function propsToNumber(v: any) {
+        if (v === undefined || v === null) return 0;
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
     useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
@@ -48,8 +78,8 @@ export const BracketScoreModal: React.FC<BracketScoreModalProps> = ({
         document.addEventListener('keydown', handleEscape);
         document.addEventListener('mousedown', handleClickOutside);
 
-        // Focus the first input
-        const firstInput = modalRef.current?.querySelector('input');
+        // Focus the first input/select
+        const firstInput = modalRef.current?.querySelector('input, select') as HTMLInputElement | HTMLSelectElement | null;
         if (firstInput) firstInput.focus();
 
         return () => {
@@ -71,6 +101,20 @@ export const BracketScoreModal: React.FC<BracketScoreModalProps> = ({
         // Prevent tied scores - someone must win
         if (s1 === s2) {
             return;
+        }
+
+        // Validate against max allowed score if configured
+        if (maxAllowedScore > 0) {
+            if (s1 > maxAllowedScore || s2 > maxAllowedScore) {
+                alert(`Scores cannot exceed ${maxAllowedScore}.`);
+                return;
+            }
+            // Ensure exactly one player has the race-winning score and the other is less
+            const oneHasMax = (s1 === maxAllowedScore && s2 < maxAllowedScore) || (s2 === maxAllowedScore && s1 < maxAllowedScore);
+            if (!oneHasMax) {
+                alert(`One player must reach ${maxAllowedScore} and the other must be less than ${maxAllowedScore}.`);
+                return;
+            }
         }
 
         setIsSubmitting(true);
@@ -129,34 +173,54 @@ export const BracketScoreModal: React.FC<BracketScoreModalProps> = ({
                             <label className="score-input-label" htmlFor="score1">
                                 {participant1?.name || 'TBD'}
                             </label>
-                            <input
-                                id="score1"
-                                type="number"
-                                className="score-input"
-                                value={score1}
-                                onChange={(e) => setScore1(e.target.value)}
-                                placeholder="0"
-                                required
-                                disabled={isSubmitting}
-                                min="0"
-                            />
+                            {maxAllowedScore > 0 ? (
+                                <select id="score1" value={score1} onChange={(e) => setScore1(e.target.value)} disabled={isSubmitting}>
+                                    <option value="">--</option>
+                                    {Array.from({ length: maxAllowedScore + 1 }, (_, n) => {
+                                        const disableMax = n === maxAllowedScore && score2 === String(maxAllowedScore);
+                                        return <option key={n} value={String(n)} disabled={disableMax}>{n}</option>;
+                                    })}
+                                </select>
+                            ) : (
+                                <input
+                                    id="score1"
+                                    type="number"
+                                    className="score-input"
+                                    value={score1}
+                                    onChange={(e) => setScore1(e.target.value)}
+                                    placeholder="0"
+                                    required
+                                    disabled={isSubmitting}
+                                    min="0"
+                                />
+                            )}
                         </div>
 
                         <div className="score-input-row">
                             <label className="score-input-label" htmlFor="score2">
                                 {participant2?.name || 'TBD'}
                             </label>
-                            <input
-                                id="score2"
-                                type="number"
-                                className="score-input"
-                                value={score2}
-                                onChange={(e) => setScore2(e.target.value)}
-                                placeholder="0"
-                                required
-                                disabled={isSubmitting}
-                                min="0"
-                            />
+                            {maxAllowedScore > 0 ? (
+                                <select id="score2" value={score2} onChange={(e) => setScore2(e.target.value)} disabled={isSubmitting}>
+                                    <option value="">--</option>
+                                    {Array.from({ length: maxAllowedScore + 1 }, (_, n) => {
+                                        const disableMax = n === maxAllowedScore && score1 === String(maxAllowedScore);
+                                        return <option key={n} value={String(n)} disabled={disableMax}>{n}</option>;
+                                    })}
+                                </select>
+                            ) : (
+                                <input
+                                    id="score2"
+                                    type="number"
+                                    className="score-input"
+                                    value={score2}
+                                    onChange={(e) => setScore2(e.target.value)}
+                                    placeholder="0"
+                                    required
+                                    disabled={isSubmitting}
+                                    min="0"
+                                />
+                            )}
                         </div>
                     </div>
 

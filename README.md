@@ -140,13 +140,23 @@ src/
 
 ### CSV Import Format
 
-Your CSV file should have the following structure:
+Your CSV file may include additional optional columns to carry metadata used for disambiguation and Fargo data. The supported columns (in order) are:
+
 ```csv
-name,phone
-John Doe,555-0123
-Jane Smith,555-0456
-Mike Johnson,555-0789
+name,phone,email,membershipId,city,state,effectiveRating,robustness
 ```
+
+Only `name` and `phone` are required. Other columns are optional — leave them empty if not available. Example:
+
+```csv
+John Doe,555-0123,john@example.com,12345,San Diego,CA,1780,0.42
+Jane Smith,555-0456,jane@example.com,23456,Portland,OR,1650,0.31
+Mike Johnson,555-0789,,,,,,
+```
+
+Notes:
+- `effectiveRating` and `robustness` are numeric values (if available).
+- `membershipId` helps allow identical display names to coexist and is used when present.
 
 ### Table Naming Convention
 

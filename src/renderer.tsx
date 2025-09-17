@@ -44,7 +44,7 @@ const App = () => {
     const [tournamentComplete, setTournamentComplete] = useState(false);
     const [tableCount, setTableCount] = useState(1);
     const [tableAssignments, setTableAssignments] = useState<(number | null)[]>([]);
-    const [activeTab, setActiveTab] = useState<'bracket' | 'tables'>('bracket');
+    const [activeTab, setActiveTab] = useState<'bracket' | 'tables' | 'players'>('bracket');
     const [globalAutoAssign, setGlobalAutoAssign] = useState(true);
     const [tableSettings, setTableSettings] = useState<{ [key: number]: { name: string, doNotAutoAssign: boolean } }>({
         1: { name: 'Stream', doNotAutoAssign: false }
@@ -609,6 +609,13 @@ const App = () => {
                             <span className="tab-icon">🏓</span>
                             Tables ({tableCount})
                         </button>
+                        <button
+                            className={`tournament-tab ${activeTab === 'players' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('players')}
+                        >
+                            <span className="tab-icon">👥</span>
+                            Players
+                        </button>
                     </div>
 
                     <div className="tab-content">
@@ -652,17 +659,105 @@ const App = () => {
                                 )}
                             </div>
                         )}
+
+                        {activeTab === 'players' && (
+                            <div className="players-tab">
+                                {bracketsData ? (
+                                    <div style={{ padding: 12 }}>
+                                        <h3>Players</h3>
+                                        <p style={{ color: 'var(--text-secondary)', marginTop: 4 }}>Edit phone numbers; other data is read-only.</p>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
+                                            <thead>
+                                                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                                                    <th style={{ padding: 8 }}>Name</th>
+                                                    <th style={{ padding: 8 }}>Phone</th>
+                                                    <th style={{ padding: 8 }}>Email</th>
+                                                    <th style={{ padding: 8 }}>Membership ID</th>
+                                                    <th style={{ padding: 8 }}>City</th>
+                                                    <th style={{ padding: 8 }}>State</th>
+                                                    <th style={{ padding: 8 }}>Rating</th>
+                                                    <th style={{ padding: 8 }}>Robustness</th>
+                                                    <th style={{ padding: 8 }}>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {bracketsData.participant.map((p) => (
+                                                    <PlayerRow
+                                                        key={p.id}
+                                                        participant={p}
+                                                        tournamentService={tournamentService}
+                                                        onSaved={async () => {
+                                                            const updated = await tournamentService.getTournamentData();
+                                                            setBracketsData(updated);
+                                                        }}
+                                                    />
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div style={{ padding: 12 }}>
+                                        <h3>Players (not started)</h3>
+                                        <p style={{ color: 'var(--text-secondary)', marginTop: 4 }}>These are the players you've added in the setup wizard. Start the tournament to promote them into participants.</p>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
+                                            <thead>
+                                                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                                                    <th style={{ padding: 8 }}>Name</th>
+                                                    <th style={{ padding: 8 }}>Phone</th>
+                                                    <th style={{ padding: 8 }}>Email</th>
+                                                    <th style={{ padding: 8 }}>Membership ID</th>
+                                                    <th style={{ padding: 8 }}>City</th>
+                                                    <th style={{ padding: 8 }}>State</th>
+                                                    <th style={{ padding: 8 }}>Rating</th>
+                                                    <th style={{ padding: 8 }}>Robustness</th>
+                                                    <th style={{ padding: 8 }}>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {players && players.length > 0 ? players.map((p, i) => (
+                                                    <PreStartPlayerRow key={`${p.name}-${i}`} player={p} index={i} players={players} setPlayers={setPlayers} />
+                                                )) : (
+                                                    <tr><td colSpan={9} style={{ padding: 12 }}>No players yet. Use the Setup wizard to add players.</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
 
             {bracketScoreModal.isOpen && bracketScoreModal.currentMatch && bracketsData && (
-                <BracketScoreModal
-                    match={bracketScoreModal.currentMatch}
-                    participants={bracketsData.participant}
-                    onClose={bracketScoreModal.closeModal}
-                    onMatchUpdate={handleBracketMatchUpdate}
-                />
+                (() => {
+                    const cmatch = bracketScoreModal.currentMatch!;
+                    const allMatches = bracketsData.match || [];
+                    const stages = bracketsData.stage || [];
+                    const stage = stages.find(s => s.id === cmatch.stage_id);
+                    // Determine if this is the grand final reset by looking at GF matches for this stage and seeing if this match has the highest round_id
+                    let isGFReset = false;
+                    if (stage && stage.settings && (stage.settings.grandFinal === 'double' || trueDouble)) {
+                        const gfMatches = allMatches.filter(m => m.stage_id === cmatch.stage_id && (m.group_id || 0) >= 3);
+                        if (gfMatches.length > 0) {
+                            const maxRound = Math.max(...gfMatches.map(m => (m.round_id || 0) || 0));
+                            isGFReset = (cmatch.round_id || 0) === maxRound && maxRound > 1;
+                        }
+                    }
+
+                    return (
+                        <BracketScoreModal
+                            match={cmatch}
+                            participants={bracketsData.participant}
+                            onClose={bracketScoreModal.closeModal}
+                            onMatchUpdate={handleBracketMatchUpdate}
+                            raceWinners={raceWinners}
+                            raceLosers={raceLosers}
+                            trueDouble={trueDouble}
+                            isGFReset={isGFReset}
+                        />
+                    );
+                })()
             )}
 
             {tournamentComplete && (
@@ -682,3 +777,94 @@ if (container) {
 } else {
     console.error('Root container not found');
 }
+
+// Inline player row component used only in this renderer for quick inline phone edits
+interface PlayerRowProps {
+    participant: any;
+    tournamentService: TournamentService;
+    onSaved: () => Promise<void>;
+}
+
+const PlayerRow: React.FC<PlayerRowProps> = ({ participant, tournamentService, onSaved }) => {
+    const [editing, setEditing] = useState(false);
+    const [phone, setPhone] = useState(participant.phone || '');
+    const [saving, setSaving] = useState(false);
+
+    const save = async () => {
+        setSaving(true);
+        try {
+            // Update participant by id using memory storage's update with filter
+            await tournamentService.getStorage().update('participant', { id: participant.id }, { phone: phone });
+            await onSaved();
+            setEditing(false);
+        } catch (err) {
+            console.error('Failed to save phone:', err);
+            alert('Failed to save phone number.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+            <td style={{ padding: 8 }}>{participant.name}</td>
+            <td style={{ padding: 8 }}>
+                {editing ? (
+                    <input value={phone} onChange={e => setPhone(e.target.value)} style={{ width: 140 }} />
+                ) : (
+                    <span>{participant.phone || ''}</span>
+                )}
+            </td>
+            <td style={{ padding: 8 }}>{(participant as any).email || ''}</td>
+            <td style={{ padding: 8 }}>{(participant as any).membershipId || ''}</td>
+            <td style={{ padding: 8 }}>{(participant as any).city || ''}</td>
+            <td style={{ padding: 8 }}>{(participant as any).state || ''}</td>
+            <td style={{ padding: 8 }}>{(participant as any).effectiveRating ?? ''}</td>
+            <td style={{ padding: 8 }}>{(participant as any).robustness ?? ''}</td>
+            <td style={{ padding: 8 }}>
+                {editing ? (
+                    <>
+                        <button onClick={save} disabled={saving} style={{ marginRight: 6 }}>{saving ? 'Saving...' : 'Save'}</button>
+                        <button onClick={() => { setEditing(false); setPhone(participant.phone || ''); }} disabled={saving}>Cancel</button>
+                    </>
+                ) : (
+                    <button onClick={() => setEditing(true)}>Edit Phone</button>
+                )}
+            </td>
+        </tr>
+    );
+};
+
+// Row component for players when tournament has not been started yet (from the wizard)
+interface PreStartPlayerRowProps {
+    player: any;
+    index: number;
+    players: any[];
+    setPlayers: (p: any[]) => void;
+}
+
+const PreStartPlayerRow: React.FC<PreStartPlayerRowProps> = ({ player, index, players, setPlayers }) => {
+    const [editing, setEditing] = useState(false);
+    const [phone, setPhone] = useState(player.phone || '');
+
+    const save = () => {
+        const cleaned = (phone || '').trim().replace(/[^+0-9]/g, '');
+        const updated = players.map((p, i) => i === index ? { ...p, phone: cleaned } : p);
+        setPlayers(updated);
+        setEditing(false);
+    };
+
+    return (
+        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+            <td style={{ padding: 8 }}>{player.name}</td>
+            <td style={{ padding: 8 }}>{editing ? <input value={phone} onChange={e => setPhone(e.target.value)} style={{ width: 140 }} /> : (player.phone || '')}</td>
+            <td style={{ padding: 8 }}>{player.email || ''}</td>
+            <td style={{ padding: 8 }}>{player.membershipId || ''}</td>
+            <td style={{ padding: 8 }}>{player.city || ''}</td>
+            <td style={{ padding: 8 }}>{player.state || ''}</td>
+            <td style={{ padding: 8 }}>{player.effectiveRating ?? ''}</td>
+            <td style={{ padding: 8 }}>{player.robustness ?? ''}</td>
+            <td style={{ padding: 8 }}>{editing ? (<><button onClick={save} style={{ marginRight: 6 }}>Save</button><button onClick={() => { setEditing(false); setPhone(player.phone || ''); }}>Cancel</button></>) : (<button onClick={() => setEditing(true)}>Edit Phone</button>)}</td>
+        </tr>
+    );
+};

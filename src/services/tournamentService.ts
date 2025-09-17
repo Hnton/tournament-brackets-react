@@ -31,8 +31,129 @@ class TournamentService {
             console.log('Creating tournament with players:', players);
             console.log('Bracket type:', bracketType);
 
-            // Convert players to participants and pad to next power of 2
-            const participantNames = players.map(p => p.name);
+            // Convert players to participant seed names and pad to next power of 2
+            // Disambiguation rules (per user):
+            // If duplicate players share the same display name, choose the disambiguator for each player in this order:
+            // 1) If group has different states -> show (state)
+            // 2) Else if same state but different cities -> show (state, city)
+            // 3) Else if same state & city but different effectiveRating -> show (state, city, effectiveRating)
+            // 4) Else show (membershipId) if available
+            // If disambiguator still doesn't make names unique, append numeric occurrence suffix (#n)
+            const participantNames: string[] = [];
+            const seedByIndex: string[] = [];
+
+            const makeBase = (nameStr: string) => nameStr || '';
+
+            // Group players by case-insensitive name
+            const groups: { [key: string]: number[] } = {};
+            for (let i = 0; i < players.length; i++) {
+                const nameForKey = players[i]?.name ?? '';
+                const key = nameForKey.toLowerCase();
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(i);
+            }
+
+            // First pass: compute a candidate seed for each player following per-player disambiguation rules
+            const candidateSeeds: string[] = new Array(players.length);
+
+            const safe = (v: any) => (v === undefined || v === null) ? '' : String(v);
+
+            const countsFor = (indices: number[], fn: (p: Player) => string) => {
+                const m = new Map<string, number>();
+                for (const i of indices) {
+                    const k = fn(players[i] as Player) || '';
+                    m.set(k, (m.get(k) || 0) + 1);
+                }
+                return m;
+            };
+
+            for (const key of Object.keys(groups)) {
+                const indices = groups[key] || [];
+                if (indices.length === 1) {
+                    const firstIdx = indices[0]!;
+                    const p = players[firstIdx] as any;
+                    candidateSeeds[firstIdx] = makeBase(p?.name);
+                    continue;
+                }
+
+                // overall state counts across the name-group
+                const stateCounts = countsFor(indices, (p: Player) => safe((p as any).state));
+
+                for (const idx of indices) {
+                    const p: any = players[idx];
+                    const base = makeBase(p.name);
+                    const state = safe(p.state);
+                    const city = safe(p.city);
+                    const rating = p.effectiveRating !== undefined ? String(p.effectiveRating) : '';
+
+                    let disamb = '';
+
+                    // 1) If this player's state is unique in the whole name-group -> (state)
+                    if (state && (stateCounts.get(state) || 0) === 1) {
+                        disamb = `(${state})`;
+                    } else {
+                        // players that share this player's state
+                        const sameStateIdx = indices.filter(i => safe((players[i] as any).state) === state);
+                        if (sameStateIdx.length > 1) {
+                            const cityCounts = countsFor(sameStateIdx, (pp: Player) => safe((pp as any).city));
+                            // 2) within same-state group, if this city is unique -> (state, city)
+                            if (city && (cityCounts.get(city) || 0) === 1) {
+                                const parts: string[] = [];
+                                if (state) parts.push(state);
+                                parts.push(city);
+                                disamb = `(${parts.join(', ')})`;
+                            } else {
+                                // 3) within same state+city, if rating unique -> (state, city, rating)
+                                const sameStateCityIdx = sameStateIdx.filter(i => safe((players[i] as any).city) === city);
+                                if (sameStateCityIdx.length > 1) {
+                                    const ratingCounts = countsFor(sameStateCityIdx, (pp: Player) => pp.effectiveRating !== undefined ? String((pp as any).effectiveRating) : '');
+                                    if (rating && (ratingCounts.get(rating) || 0) === 1) {
+                                        const parts: string[] = [];
+                                        if (state) parts.push(state);
+                                        if (city) parts.push(city);
+                                        parts.push(rating);
+                                        disamb = `(${parts.join(', ')})`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 4) fallback to membershipId if uniquely identifies the player in the group
+                    if (!disamb && p.membershipId) {
+                        const mid = safe(p.membershipId);
+                        const midCounts = countsFor(indices, (pp: Player) => safe((pp as any).membershipId));
+                        if (mid && (midCounts.get(mid) || 0) === 1) disamb = `(${mid})`;
+                    }
+
+                    candidateSeeds[idx] = disamb ? `${base} ${disamb}` : base;
+                }
+            }
+
+            // Ensure global uniqueness by appending numeric suffixes for duplicates
+            const used = new Map<string, number>();
+            for (let i = 0; i < candidateSeeds.length; i++) {
+                let seed = candidateSeeds[i] || makeBase(players[i]?.name ?? '');
+                if (!used.has(seed)) {
+                    used.set(seed, 1);
+                    participantNames.push(seed);
+                    seedByIndex.push(seed);
+                    continue;
+                }
+
+                // already used -> append occurrence index
+                let occ = used.get(seed) || 1;
+                let newSeed = '';
+                while (true) {
+                    newSeed = `${seed} (#${occ})`;
+                    if (!used.has(newSeed)) break;
+                    occ++;
+                }
+                used.set(seed, occ + 1);
+                used.set(newSeed, 1);
+                participantNames.push(newSeed);
+                seedByIndex.push(newSeed);
+            }
 
             // Calculate next power of 2
             const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(Math.max(2, participantNames.length))));
@@ -52,11 +173,20 @@ class TournamentService {
             console.log('Creating stage...');
             const stageName = tournamentName ? `${tournamentName}` : 'Main Stage';
             const stageSettings: any = {
-                grandFinal: bracketType === 'double_elimination' ? 'double' : 'none',
                 balanceByes: true,
             };
 
+            // Map trueDouble to grandFinal for double-elimination stages.
+            // Per user request: no (false) -> 'simple', yes (true) -> 'double'.
+            if (bracketType === 'double_elimination') {
+                const isTrueDouble = options && options.trueDouble === true;
+                stageSettings.grandFinal = isTrueDouble ? 'double' : 'simple';
+            } else {
+                stageSettings.grandFinal = 'none';
+            }
+
             if (options) {
+                // keep explicit trueDouble flag if provided (consumer can use it); grandFinal drives engine behavior
                 if (options.trueDouble !== undefined) stageSettings.trueDouble = !!options.trueDouble;
                 if (options.gameType) stageSettings.gameType = options.gameType;
                 if (options.description) stageSettings.description = options.description;
@@ -72,6 +202,34 @@ class TournamentService {
                 settings: stageSettings
             });
             console.log('Stage created successfully');
+
+            // After stage creation, storage will contain participant records with the seeded names.
+            // Update those participant records to include phone/email/membershipId and any metadata
+            try {
+                for (let i = 0; i < players.length; i++) {
+                    const p: any = players[i];
+                    const seedName = seedByIndex[i];
+
+                    const updateData: any = {};
+                    if (p.phone) updateData.phone = p.phone;
+                    if (p.email) updateData.email = p.email;
+                    if (p.membershipId) updateData.membershipId = p.membershipId;
+                    if (p.effectiveRating !== undefined) updateData.effectiveRating = p.effectiveRating;
+                    if (p.city) updateData.city = p.city;
+                    if (p.state) updateData.state = p.state;
+                    if (p.robustness !== undefined) updateData.robustness = p.robustness;
+
+                    if (Object.keys(updateData).length > 0) {
+                        try {
+                            await this.storage.update('participant', { name: seedName }, updateData);
+                        } catch (err) {
+                            console.warn('Failed to update participant metadata for', seedName, err);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('Error updating stored participant metadata:', err);
+            }
 
             // Get all tournament data
             const data = await this.getTournamentData();
@@ -130,6 +288,60 @@ class TournamentService {
         opponent2Result?: 'win' | 'loss' | 'draw'
     ): Promise<void> {
         try {
+            // Validate scores against stage settings (race limits).
+            // Choose the correct race limit per-match:
+            // - If the match is a losers bracket match (group_id === 2) use raceLosers
+            // - If the match is a Grand Final reset (GF round 2) treat it as losers-side and use raceLosers
+            // - Otherwise use raceWinners
+            const matches = await this.storage.select('match') as any[] || [];
+            const matchRec = matches.find(m => m.id === matchId);
+            let maxAllowed = 0;
+            if (matchRec) {
+                const stageId = matchRec.stage_id || matchRec.stageId || null;
+                if (stageId) {
+                    const stages = await this.storage.select('stage') as any[] || [];
+                    const stage = stages.find((s: any) => s.id === stageId);
+                    if (stage && stage.settings) {
+                        const winnersMax = Number(stage.settings.raceWinners || 0) || 0;
+                        const losersMax = Number(stage.settings.raceLosers || winnersMax) || 0;
+
+                        // Determine if this match should be treated as losers-side.
+                        let isLosersSide = false;
+                        const rawGroupId = matchRec.group_id ?? matchRec.groupId;
+                        const rawRoundId = matchRec.round_id ?? matchRec.roundId;
+
+                        // Basic losers bracket detection
+                        if (rawGroupId === 2) {
+                            isLosersSide = true;
+                        }
+
+                        // Grand final reset detection: if stage has grandFinal === 'double' treat the
+                        // highest round among GF matches as the reset (losers-side) when maxRound > 1
+                        if (!isLosersSide) {
+                            const grandFinalMode = stage.settings.grandFinal;
+                            const stageTrueDouble = stage.settings.trueDouble || grandFinalMode === 'double';
+                            if (stageTrueDouble) {
+                                const gfMatches = matches.filter(m => (m.stage_id || m.stageId) === stageId && ((m.group_id || m.groupId) || 0) >= 3);
+                                if (gfMatches.length > 0) {
+                                    const maxRound = Math.max(...gfMatches.map(m => (m.round_id || m.roundId || 0) || 0));
+                                    if (maxRound > 1 && (rawRoundId || 0) === maxRound) {
+                                        isLosersSide = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        maxAllowed = isLosersSide ? losersMax : winnersMax;
+                    }
+                }
+            }
+
+            if (maxAllowed > 0) {
+                if ((opponent1Score !== undefined && opponent1Score > maxAllowed) || (opponent2Score !== undefined && opponent2Score > maxAllowed)) {
+                    throw new Error(`Score exceeds configured race limit of ${maxAllowed}`);
+                }
+            }
+
             const updateData: any = {
                 id: matchId,
                 opponent1: {},
@@ -162,10 +374,13 @@ class TournamentService {
     async getParticipantsWithPhone(players: Player[]): Promise<Participant[]> {
         const participants = await this.storage.select('participant') as Participant[] || [];
 
-        return participants.map((p: Participant) => ({
-            ...p,
-            phone: players.find(player => player.name === p.name)?.phone || ''
-        }));
+        return participants.map((p: Participant) => {
+            // Attempt to match by membershipId (if participant has one and a player shares it), else fall back to exact name
+            const matchByMembership = (p as any).membershipId ? players.find(player => (player as any).membershipId === (p as any).membershipId) : undefined;
+            const matchByName = matchByMembership ? undefined : players.find(player => player.name === p.name);
+            const phone = matchByMembership?.phone || matchByName?.phone || '';
+            return { ...p, phone } as Participant;
+        });
     }
 
     /**
