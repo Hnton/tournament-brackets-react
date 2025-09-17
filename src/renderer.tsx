@@ -449,6 +449,7 @@ const App = () => {
                                         onMoveMatch={handleMoveMatch}
                                         onReturnToWaiting={handleReturnToWaiting}
                                         onSubmitScore={handleTableScore}
+                                        onOpenScoreModal={bracketScoreModal.openModal}
                                         onAddTable={() => addTable()}
                                         onRemoveTable={handleRemoveTable}
                                         participants={bracketsData.participant}

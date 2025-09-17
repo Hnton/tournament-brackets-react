@@ -7,155 +7,6 @@ import { getUserFriendlyRoundNumber } from '../utils';
 // Decrease <1 to make losers less aggressive. Default 1.05 gives a modest boost to LB.
 const LB_AGGRESSIVENESS = 1.25;
 
-interface ScoreModalProps {
-    match: Match;
-    onSubmit: (score1: number, score2: number) => void;
-    onClose: () => void;
-    participants: Participant[];
-}
-
-const ScoreModal: React.FC<ScoreModalProps> = ({ match, onSubmit, onClose, participants }) => {
-    const [score1, setScore1] = React.useState('');
-    const [score2, setScore2] = React.useState('');
-    const [isSubmitting, setIsSubmitting] = React.useState(false);
-    const modalRef = useRef<HTMLDivElement>(null);
-
-    // Helper function to get participant name by ID
-    const getParticipantName = (participantId: number | null | undefined): string => {
-        if (!participantId) return 'TBD';
-        const participant = participants.find(p => p.id === participantId);
-        return participant?.name || 'TBD';
-    };
-
-    useEffect(() => {
-        const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-
-        const handleClickOutside = (e: MouseEvent) => {
-            if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-                onClose();
-            }
-        };
-
-        document.addEventListener('keydown', handleEscape);
-        document.addEventListener('mousedown', handleClickOutside);
-
-        // Focus the first input
-        const firstInput = modalRef.current?.querySelector('input');
-        if (firstInput) firstInput.focus();
-
-        return () => {
-            document.removeEventListener('keydown', handleEscape);
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [onClose]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        const s1 = parseInt(score1, 10);
-        const s2 = parseInt(score2, 10);
-
-        if (isNaN(s1) || isNaN(s2)) {
-            return;
-        }
-
-        // Prevent tied scores - someone must win
-        if (s1 === s2) {
-            return;
-        }
-
-        setIsSubmitting(true);
-        try {
-            onSubmit(s1, s2);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    return (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-            <div ref={modalRef} className="modal-content">
-                <h3 id="modal-title" className="modal-header">Enter Match Score</h3>
-
-                <form onSubmit={handleSubmit}>
-                    <div className="score-inputs">
-                        <div className="score-input-row">
-                            <label className="score-input-label" htmlFor="score1">
-                                {getParticipantName(match.opponent1?.id)}
-                            </label>
-                            <input
-                                id="score1"
-                                type="number"
-                                className="score-input"
-                                value={score1}
-                                onChange={(e) => setScore1(e.target.value)}
-                                placeholder="0"
-                                required
-                                disabled={isSubmitting}
-                            />
-                        </div>
-
-                        <div className="score-input-row">
-                            <label className="score-input-label" htmlFor="score2">
-                                {getParticipantName(match.opponent2?.id)}
-                            </label>
-                            <input
-                                id="score2"
-                                type="number"
-                                className="score-input"
-                                value={score2}
-                                onChange={(e) => setScore2(e.target.value)}
-                                placeholder="0"
-                                required
-                                disabled={isSubmitting}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Show tie error message */}
-                    {score1.trim() !== '' && score2.trim() !== '' && parseInt(score1, 10) === parseInt(score2, 10) && (
-                        <div className="tie-error" style={{
-                            color: 'var(--accent-error)',
-                            textAlign: 'center',
-                            fontSize: 'var(--font-size-sm)',
-                            margin: 'var(--spacing-sm) 0',
-                            fontWeight: 500
-                        }}>
-                            ⚠️ Scores cannot be tied - someone must win!
-                        </div>
-                    )}
-
-                    <div className="modal-actions">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            disabled={isSubmitting}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            className="primary"
-                            disabled={
-                                isSubmitting ||
-                                score1.trim() === '' ||
-                                score2.trim() === '' ||
-                                isNaN(parseInt(score1, 10)) ||
-                                isNaN(parseInt(score2, 10)) ||
-                                (score1.trim() !== '' && score2.trim() !== '' && parseInt(score1, 10) === parseInt(score2, 10))
-                            }
-                        >
-                            {isSubmitting ? 'Submitting...' : 'Submit Score'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
 interface TableAssignmentProps {
     tables: number;
     matches: Match[];
@@ -163,6 +14,8 @@ interface TableAssignmentProps {
     onReturnToWaiting: (match: Match) => void;
     waitingMatches: Match[];
     onSubmitScore: (match: Match, score1: number, score2: number) => void;
+    // Reuse shared bracket score modal by opening it via this callback
+    onOpenScoreModal?: (match: Match) => void;
     onAddTable: () => void;
     onRemoveTable: () => void;
     participants: Participant[];
@@ -179,9 +32,10 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
     onAddTable,
     onRemoveTable,
     participants,
-    allMatches
+    allMatches,
+    onOpenScoreModal
 }) => {
-    const [scoreModal, setScoreModal] = React.useState<Match | null>(null);
+    // score modal is handled by the shared BracketScoreModal in the renderer
     // selected table per waiting match id
     const [selectedTableByMatch, setSelectedTableByMatch] = React.useState<Record<number, number | null>>({});
 
@@ -719,7 +573,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
 
                                             <div className="table-actions">
                                                 <button
-                                                    onClick={() => setScoreModal(assignedMatch)}
+                                                    onClick={() => onOpenScoreModal ? onOpenScoreModal(assignedMatch) : undefined}
                                                     className="table-action-btn score-match-btn"
                                                 >
                                                     Enter Score
@@ -768,18 +622,7 @@ export const TableAssignmentNew: React.FC<TableAssignmentProps> = ({
                 </div>
             </div>
 
-            {/* Score Modal */}
-            {scoreModal && (
-                <ScoreModal
-                    match={scoreModal}
-                    participants={participants}
-                    onSubmit={(score1, score2) => {
-                        onSubmitScore(scoreModal, score1, score2);
-                        setScoreModal(null);
-                    }}
-                    onClose={() => setScoreModal(null)}
-                />
-            )}
+            {/* Score handling moved to the shared BracketScoreModal rendered by renderer.tsx */}
         </div>
     );
 };
