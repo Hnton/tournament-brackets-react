@@ -66,10 +66,10 @@ try {
             # If there are files in out/, attach them; otherwise create release without assets
             $assets = Get-ChildItem -Path .\out -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
             if ($assets -and $assets.Count -gt 0) {
-                gh release create $newVersion --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY @($assets) -q
+                gh release create $newVersion --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY @($assets)
             }
             else {
-                gh release create $newVersion --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY -q
+                gh release create $newVersion --title "$newVersion" --notes "Release $newVersion" -R $env:GITHUB_REPOSITORY
             }
         }
         catch {
