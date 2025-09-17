@@ -15,7 +15,7 @@
     "lint": "echo \"No linting configured\"",
     "test": "jest",
     "test:watch": "jest --watch",
-    "postversion": "git push origin HEAD && git push origin --tags"
+    "postversion": "node scripts/postversion.js"
   },
   "keywords": [],
   "author": {
