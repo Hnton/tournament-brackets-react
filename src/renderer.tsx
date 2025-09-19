@@ -28,6 +28,8 @@ import TournamentService from './services/tournamentService';
 import useTournamentService from './hooks/useTournamentService';
 import useTournament from './hooks/useTournament';
 import AppHeader from './components/AppHeader';
+import TrialModal from './components/TrialModal';
+import trialService from './services/trialService';
 import {
     autoAssignMatches,
     assignMatchToTable,
@@ -96,6 +98,55 @@ const App = () => {
 
     // Modal state
     const bracketScoreModal = useBracketScoreModal();
+
+    // Trial state: start trial on first run and track remaining time
+    const [trialRemainingMs, setTrialRemainingMs] = useState<number>(() => {
+        // Start trial if missing and return remaining ms
+        try {
+            const ts = trialService.startTrialIfMissing();
+            return trialService.getRemainingMs();
+        } catch (e) {
+            console.error('Failed to initialize trial', e);
+            return 0;
+        }
+    });
+
+    const trialExpired = trialService.isExpired();
+
+    // Toast shown briefly when trial is reset via keyboard shortcut
+    const [resetToast, setResetToast] = useState<string | null>(null);
+
+    // Keyboard shortcut to reset trial: Ctrl/Cmd + Shift + R
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+            if (ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'r') {
+                e.preventDefault();
+                try {
+                    trialService.clearTrial();
+                    trialService.startTrialIfMissing();
+                    setTrialRemainingMs(trialService.getRemainingMs());
+                    setResetToast('Trial reset — new one-hour trial started');
+                    setTimeout(() => setResetToast(null), 3000);
+                } catch (err) {
+                    console.error('Failed to reset trial', err);
+                    setResetToast('Failed to reset trial');
+                    setTimeout(() => setResetToast(null), 3000);
+                }
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, []);
+
+    useEffect(() => {
+        // Poll remaining time every second while trial active
+        const id = setInterval(() => {
+            setTrialRemainingMs(trialService.getRemainingMs());
+        }, 1000);
+        return () => clearInterval(id);
+    }, []);
 
     // Prevent document-level scrolling while on the initial setup screen
     useEffect(() => {
@@ -349,6 +400,29 @@ const App = () => {
 
     return (
         <div className="app-container">
+            {/* Trial banner or expired overlay */}
+            {!trialExpired && trialRemainingMs > 0 && (
+                <div style={{ position: 'absolute', top: 12, right: 12 }}>
+                    <TrialModal remainingMs={trialRemainingMs} expired={false} />
+                </div>
+            )}
+            {trialExpired && <TrialModal remainingMs={0} expired={true} />}
+            {resetToast && (
+                <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 10000 }}>
+                    <div style={{ background: '#0b1220', color: '#dff0d8', padding: '10px 14px', borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,0.4)' }}>
+                        {resetToast}
+                    </div>
+                </div>
+            )}
+            {/* Bottom-right persistent trial timer */}
+            {!trialExpired && trialRemainingMs > 0 && (
+                <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 9999 }}>
+                    <div style={{ background: 'rgba(11,18,32,0.9)', color: '#e6eef8', padding: '8px 12px', borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,0.4)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, opacity: 0.8 }}>Trial</span>
+                        <strong style={{ fontSize: 14 }}>{trialService.formatRemaining(trialRemainingMs)}</strong>
+                    </div>
+                </div>
+            )}
             <AppHeader
                 tournamentName={tournamentName}
                 tournamentStarted={tournamentStarted}
