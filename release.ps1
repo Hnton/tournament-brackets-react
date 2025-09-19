@@ -34,7 +34,10 @@ if ($LASTEXITCODE -ne 0) {
 
 # Update version
 Write-Host "📝 Updating version..." -ForegroundColor Yellow
-$newVersion = npm version $ReleaseType --no-git-tag-version
+$null = npm version $ReleaseType --no-git-tag-version
+# Read the updated version from package.json to avoid parsing npm stdout (which can include postversion output)
+$pkg = Get-Content package.json | Out-String | ConvertFrom-Json
+$newVersion = $pkg.version
 Write-Host "New version: $newVersion" -ForegroundColor Green
 
 # Update package-lock.json

@@ -30,7 +30,9 @@ npm test
 
 # Update version
 echo "📝 Updating version..."
-NEW_VERSION=$(npm version $RELEASE_TYPE --no-git-tag-version)
+npm version $RELEASE_TYPE --no-git-tag-version >/dev/null
+# Read updated version from package.json to avoid parsing npm output which may include postversion hooks
+NEW_VERSION=$(node -p "require('./package.json').version")
 echo "New version: $NEW_VERSION"
 
 # Update package-lock.json
