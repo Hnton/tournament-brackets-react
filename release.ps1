@@ -47,10 +47,11 @@ npm install --package-lock-only
 git add package.json package-lock.json
 git commit -m "chore: bump version to $newVersion"
 
-# Create and push tag
-git tag $newVersion
+# Create and push v-prefixed tag (GitHub Actions listens for tags like v1.2.3)
+$tagName = "v$newVersion"
+git tag $tagName
 git push origin master
-git push origin $newVersion
+git push origin $tagName
 
 Write-Host "✅ Release $newVersion created successfully!" -ForegroundColor Green
 Write-Host "📦 GitHub Actions will now build and publish the release automatically" -ForegroundColor Blue
